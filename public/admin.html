@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ניהול — סטייל מתגלגל</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --pink: #ff6b8a; --pink-dark: #e54870; --bg: #f5f6f8; --card: #fff;
+      --text: #1a1a1a; --muted: #777; --border: #e4e6eb; --red: #e74c3c;
+      --green: #2ecc71; --blue: #4a90e2;
+      --grad: linear-gradient(135deg,#ff6b8a 0%,#ff8fab 100%);
+    }
+    body { font-family: Heebo,sans-serif; background: var(--bg); color: var(--text); direction: rtl; font-size: 14px; }
+    .admin-bar {
+      background: #1e2128; color: white; padding: 12px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    }
+    .admin-bar h1 { font-size: 17px; font-weight: 700; }
+    .admin-bar h1::before { content: "🛠️ "; }
+    .admin-bar .logout { background: rgba(255,255,255,0.1); color: white; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .admin-bar .logout:hover { background: rgba(255,255,255,0.2); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat { background: var(--card); border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .stat-value { font-size: 24px; font-weight: 800; color: var(--text); }
+    .stat.alert .stat-value { color: var(--red); }
+    .stat.ok .stat-value { color: var(--green); }
+
+    .tabs { display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 8px 16px; border-radius: 22px; background: white; border: 1px solid var(--border); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .tab.active { background: var(--grad); color: white; border-color: transparent; box-shadow: 0 2px 8px rgba(255,107,138,0.3); }
+
+    .panel { background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .panel-bar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .panel-bar input, .panel-bar select {
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: white; font-family: inherit;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { background: #fafbfc; font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.3px; position: sticky; top: 0; }
+    tbody tr:hover { background: #fafbfc; }
+    td img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; background: #eee; }
+
+    .btn-s { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; cursor: pointer; background: white; color: var(--text); font-family: inherit; font-weight: 500; }
+    .btn-s:hover { background: var(--bg); }
+    .btn-s.danger { color: var(--red); border-color: #fbc4bf; }
+    .btn-s.danger:hover { background: #fef0ee; }
+    .btn-s.warn { color: #b26a00; border-color: #ffd98a; }
+    .btn-s.warn:hover { background: #fff6e5; }
+    .btn-s.ok { color: var(--green); border-color: #b4e4c7; }
+    .btn-s.ok:hover { background: #eefaf2; }
+
+    .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .pill.active { background: #d5f4e0; color: #1e6f3e; }
+    .pill.sold   { background: #e6e6e6; color: #555; }
+    .pill.hidden { background: #ffe1e1; color: #a33; }
+    .pill.banned { background: #ffe1e1; color: #a33; }
+
+    .empty-state { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+    /* Login */
+    .login-bg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--grad); padding: 20px; }
+    .login-card { background: white; border-radius: 20px; padding: 32px 28px; max-width: 360px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.2); text-align: center; }
+    .login-card h2 { margin-bottom: 6px; font-size: 22px; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .login-card p { color: var(--muted); margin-bottom: 22px; font-size: 13px; }
+    .login-card input { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; outline: none; margin-bottom: 12px; }
+    .login-card input:focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255,107,138,0.15); }
+    .login-card button { width: 100%; padding: 12px; background: var(--grad); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 15px; font-family: inherit; }
+
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 10px 18px; border-radius: 22px; font-size: 13px; opacity: 0; transition: opacity 0.3s; z-index: 9999; pointer-events: none; }
+    .toast.show { opacity: 1; }
+
+    .cell-id { font-family: monospace; font-size: 12px; color: var(--muted); }
+    .cell-phone { font-family: monospace; font-size: 12px; }
+
+    @media (max-width: 600px) {
+      .hide-mobile { display: none; }
+      th, td { padding: 8px 6px; font-size: 12px; }
+      td img { width: 36px; height: 36px; }
+      .stat-value { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login screen -->
+<div class="login-bg" id="loginBg">
+  <div class="login-card">
+    <h2>ניהול 🔐</h2>
+    <p>סטייל מתגלגל — כניסה למנהל</p>
+    <input type="password" id="passInput" placeholder="סיסמת מנהל" autocomplete="off">
+    <button id="loginBtn">כניסה</button>
+  </div>
+</div>
+
+<!-- Main app (hidden until login) -->
+<div id="app" style="display:none">
+  <header class="admin-bar">
+    <h1>ניהול — סטייל מתגלגל</h1>
+    <button class="logout" id="logoutBtn">יציאה</button>
+  </header>
+
+  <main class="container">
+    <!-- Stats -->
+    <div class="stats" id="stats"></div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="items">פריטים</button>
+      <button class="tab" data-tab="users">משתמשות</button>
+      <button class="tab" data-tab="reports">דיווחים <span id="reportBadge"></span></button>
+      <button class="tab" data-tab="push">📢 פוש</button>
+    </div>
+
+    <!-- Panels -->
+    <div id="panel-items" class="panel">
+      <div class="panel-bar">
+        <strong>פריטים</strong>
+        <select id="itemFilter">
+          <option value="">הכל</option>
+          <option value="active">פעילים</option>
+          <option value="sold">נמכרו</option>
+          <option value="hidden">מוסתרים</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>תמונה</th><th>כותרת</th>
+              <th class="hide-mobile">מוכרת</th>
+              <th>מחיר</th><th>סטטוס</th>
+              <th class="hide-mobile">נצפו</th>
+              <th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody id="itemsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="panel-users" class="panel" style="display:none">
+      <div class="panel-bar"><strong>משתמשות</strong></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>שם</th><th>טלפון</th>
+              <th class="hide-mobile">עיר</th>
+              <th>פריטים</th>
+              <th class="hide-mobile">דירוג</th>
+              <th>סטטוס</th><th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="panel-push" class="panel" style="display:none">
+      <div class="panel-bar"><strong>📢 שליחת התראה לכל המשתמשות</strong></div>
+      <div style="padding:18px">
+        <div style="display:grid;grid-template-columns:1fr;gap:12px;max-width:500px">
+          <label style="font-size:13px;font-weight:500">כותרת
+            <input id="pushTitle" placeholder="למשל: שמלות חדשות בפיד!" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
+          </label>
+          <label style="font-size:13px;font-weight:500">הודעה
+            <textarea id="pushBody" placeholder="תוכן ההתראה..." rows="3" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+          </label>
+          <label style="font-size:13px;font-weight:500">קישור אחרי לחיצה (אופציונלי)
+            <input id="pushUrl" placeholder="/" value="/" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
+          </label>
+          <label style="font-size:13px;font-weight:500">קטגוריה ספציפית (אופציונלי)
+            <select id="pushCategory" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
+              <option value="">כל המשתמשות</option>
+              <option value="dress">שמלות</option>
+              <option value="shirt">חולצות</option>
+              <option value="jeans">ג'ינסים</option>
+              <option value="shoes">נעליים</option>
+              <option value="bag">תיקים</option>
+              <option value="jacket">ז'קטים</option>
+              <option value="accessories">אקססוריז</option>
+            </select>
+          </label>
+          <button class="btn-s ok" id="pushSendBtn" style="padding:12px;font-size:14px;font-weight:700">שלחי התראה</button>
+          <div id="pushResult" style="font-size:13px;color:var(--muted);min-height:20px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-reports" class="panel" style="display:none">
+      <div class="panel-bar"><strong>דיווחים</strong></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>פריט</th><th>סיבה</th>
+              <th class="hide-mobile">דיווחה</th>
+              <th class="hide-mobile">תאריך</th>
+              <th>סטטוס</th><th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody id="reportsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const KEY = "smg_admin_pass";
+let pass = localStorage.getItem(KEY);
+
+function toast(m) {
+  let el = document.querySelector(".toast");
+  if (!el) { el = document.createElement("div"); el.className = "toast"; document.body.appendChild(el); }
+  el.textContent = m;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2500);
+}
+
+async function api(path, opts = {}) {
+  const headers = { "Authorization": "AdminPass " + pass, ...(opts.headers || {}) };
+  if (opts.body && typeof opts.body === "object" && !(opts.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(path, { ...opts, headers });
+  let data; try { data = await res.json(); } catch { data = {}; }
+  if (res.status === 401) { localStorage.removeItem(KEY); location.reload(); throw new Error("unauthorized"); }
+  if (!res.ok) throw new Error(data.error || "שגיאה");
+  return data;
+}
+
+// ---------- Login ----------
+document.getElementById("loginBtn").onclick = async () => {
+  const p = document.getElementById("passInput").value;
+  if (!p) return;
+  try {
+    const res = await fetch("/api/admin/login", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ password: p }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(d.error || "סיסמה שגויה");
+    pass = p;
+    localStorage.setItem(KEY, p);
+    bootApp();
+  } catch (e) { toast(e.message); }
+};
+document.getElementById("passInput").addEventListener("keypress", (e) => {
+  if (e.key === "Enter") document.getElementById("loginBtn").click();
+});
+
+document.getElementById("logoutBtn").onclick = () => {
+  localStorage.removeItem(KEY);
+  location.reload();
+};
+
+// ---------- App boot ----------
+async function bootApp() {
+  document.getElementById("loginBg").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  await Promise.all([loadStats(), loadItems(), loadUsers(), loadReports()]);
+}
+
+// Tabs
+document.querySelectorAll(".tab").forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    const tab = t.dataset.tab;
+    ["items","users","reports","push"].forEach(k => {
+      document.getElementById("panel-" + k).style.display = k === tab ? "block" : "none";
+    });
+  };
+});
+
+// Push broadcast
+document.getElementById("pushSendBtn").onclick = async () => {
+  const title = document.getElementById("pushTitle").value.trim();
+  const message = document.getElementById("pushBody").value.trim();
+  const url = document.getElementById("pushUrl").value.trim() || "/";
+  const category = document.getElementById("pushCategory").value || null;
+  const result = document.getElementById("pushResult");
+  if (!title || !message) { toast("חסרה כותרת או תוכן"); return; }
+  if (!confirm(`לשלוח להתראה "${title}"?`)) return;
+  result.textContent = "שולח...";
+  try {
+    const r = await api("/api/admin/push/broadcast", {
+      method: "POST",
+      body: { title, message, url, category },
+    });
+    result.innerHTML = `✅ נשלח בהצלחה — ${r.sent} הצליחו, ${r.failed} נכשלו, ${r.gone} בוטלו (מתוך ${r.total})`;
+    toast("נשלח");
+  } catch (e) { result.textContent = "❌ " + e.message; toast(e.message); }
+};
+
+// ---------- Stats ----------
+async function loadStats() {
+  try {
+    const s = await api("/api/admin/stats");
+    const items = [
+      { label: "משתמשות",  v: s.users,        cls: "" },
+      { label: "פריטים",   v: s.items,        cls: "" },
+      { label: "פעילים",   v: s.active,       cls: "ok" },
+      { label: "נמכרו",    v: s.sold,         cls: "" },
+      { label: "מוסתרים",  v: s.hidden,       cls: "" },
+      { label: "דיווחים",  v: s.reports_open, cls: s.reports_open > 0 ? "alert" : "" },
+      { label: "צפיות",    v: s.views,        cls: "" },
+      { label: "מועדפים",  v: s.favorites,    cls: "" },
+    ];
+    document.getElementById("stats").innerHTML = items.map(i =>
+      `<div class="stat ${i.cls}"><div class="stat-label">${i.label}</div><div class="stat-value">${i.v.toLocaleString("he-IL")}</div></div>`
+    ).join("");
+    document.getElementById("reportBadge").innerHTML = s.reports_open > 0 ? `<span style="background:#e74c3c;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:4px">${s.reports_open}</span>` : "";
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- Items ----------
+async function loadItems() {
+  try {
+    const filter = document.getElementById("itemFilter").value;
+    const url = "/api/admin/items" + (filter ? "?status=" + filter : "");
+    const { items } = await api(url);
+    const body = document.getElementById("itemsTbody");
+    if (!items.length) { body.innerHTML = `<tr><td colspan="8" class="empty-state">אין פריטים</td></tr>`; return; }
+    body.innerHTML = items.map(i => `
+      <tr data-id="${i.id}">
+        <td class="cell-id">${i.id}</td>
+        <td>${i.photos[0] ? `<img src="${i.photos[0]}" loading="lazy">` : ""}</td>
+        <td><a href="/item.html?id=${i.id}" target="_blank" style="color:var(--text);font-weight:500">${escapeHtml(i.title)}</a></td>
+        <td class="hide-mobile">${escapeHtml(i.seller_name || "—")}</td>
+        <td>₪${i.price}</td>
+        <td><span class="pill ${i.status}">${statusLabel(i.status)}</span></td>
+        <td class="hide-mobile">${i.views || 0}</td>
+        <td>
+          ${i.status !== "hidden" ? `<button class="btn-s warn" onclick="setStatus(${i.id},'hidden')">הסתר</button>` : `<button class="btn-s ok" onclick="setStatus(${i.id},'active')">הצג</button>`}
+          ${i.status !== "sold" ? `<button class="btn-s" onclick="setStatus(${i.id},'sold')">נמכר</button>` : ""}
+          <button class="btn-s danger" onclick="delItem(${i.id})">מחק</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (e) { toast(e.message); }
+}
+
+function statusLabel(s) {
+  return { active: "פעיל", sold: "נמכר", hidden: "מוסתר" }[s] || s;
+}
+
+async function setStatus(id, status) {
+  try { await api("/api/admin/items/" + id, { method: "PATCH", body: { status } }); toast("עודכן"); loadItems(); loadStats(); }
+  catch (e) { toast(e.message); }
+}
+
+async function delItem(id) {
+  if (!confirm("למחוק את הפריט לצמיתות?")) return;
+  try { await api("/api/admin/items/" + id, { method: "DELETE" }); toast("נמחק"); loadItems(); loadStats(); }
+  catch (e) { toast(e.message); }
+}
+
+document.getElementById("itemFilter").onchange = loadItems;
+
+// ---------- Users ----------
+async function loadUsers() {
+  try {
+    const { users } = await api("/api/admin/users");
+    const body = document.getElementById("usersTbody");
+    if (!users.length) { body.innerHTML = `<tr><td colspan="8" class="empty-state">אין משתמשות</td></tr>`; return; }
+    body.innerHTML = users.map(u => `
+      <tr data-id="${u.id}">
+        <td class="cell-id">${u.id}</td>
+        <td style="font-weight:500">${escapeHtml(u.name || "—")}</td>
+        <td class="cell-phone">${u.phone}</td>
+        <td class="hide-mobile">${escapeHtml(u.city || "—")}</td>
+        <td>${u.items_listed} / ${u.items_sold} מכירות</td>
+        <td class="hide-mobile">${u.rating?.toFixed?.(1) || "5.0"} ⭐</td>
+        <td>${u.banned ? `<span class="pill banned">חסומה</span>` : `<span class="pill active">פעילה</span>`}</td>
+        <td>
+          <button class="btn-s ${u.banned ? "ok" : "warn"}" onclick="toggleBan(${u.id})">${u.banned ? "שחרר" : "חסום"}</button>
+          <button class="btn-s danger" onclick="delUser(${u.id})">מחק</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (e) { toast(e.message); }
+}
+
+async function toggleBan(id) {
+  try { const r = await api("/api/admin/users/" + id + "/ban", { method: "POST" }); toast(r.banned ? "נחסמה" : "שוחררה"); loadUsers(); }
+  catch (e) { toast(e.message); }
+}
+
+async function delUser(id) {
+  if (!confirm("למחוק את המשתמשת וכל הפריטים שלה לצמיתות?")) return;
+  try { await api("/api/admin/users/" + id, { method: "DELETE" }); toast("נמחקה"); loadUsers(); loadItems(); loadStats(); }
+  catch (e) { toast(e.message); }
+}
+
+// ---------- Reports ----------
+async function loadReports() {
+  try {
+    const { reports } = await api("/api/admin/reports");
+    const body = document.getElementById("reportsTbody");
+    if (!reports.length) { body.innerHTML = `<tr><td colspan="7" class="empty-state">אין דיווחים</td></tr>`; return; }
+    body.innerHTML = reports.map(r => `
+      <tr data-id="${r.id}">
+        <td class="cell-id">${r.id}</td>
+        <td>${r.item_id ? `<a href="/item.html?id=${r.item_id}" target="_blank">${escapeHtml(r.item_title || "#" + r.item_id)}</a>` : "—"}</td>
+        <td>${escapeHtml(r.reason || "")}</td>
+        <td class="hide-mobile">${escapeHtml(r.reporter_name || "—")}</td>
+        <td class="hide-mobile">${new Date(r.created_at * 1000).toLocaleDateString("he-IL")}</td>
+        <td>${r.resolved ? `<span class="pill sold">נסגר</span>` : `<span class="pill hidden">פתוח</span>`}</td>
+        <td>
+          ${!r.resolved ? `<button class="btn-s ok" onclick="resolveReport(${r.id})">סגור</button>` : ""}
+          ${r.item_id ? `<button class="btn-s danger" onclick="delItem(${r.item_id})">מחק פריט</button>` : ""}
+        </td>
+      </tr>
+    `).join("");
+  } catch (e) { toast(e.message); }
+}
+
+async function resolveReport(id) {
+  try { await api("/api/admin/reports/" + id + "/resolve", { method: "POST" }); toast("נסגר"); loadReports(); loadStats(); }
+  catch (e) { toast(e.message); }
+}
+
+function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
+
+// ---------- Auto-start if password already saved ----------
+if (pass) {
+  // quick verify
+  fetch("/api/admin/stats", { headers: { Authorization: "AdminPass " + pass } })
+    .then(r => r.ok ? bootApp() : (localStorage.removeItem(KEY), null));
+}
+</script>
+
+</body>
+</html>

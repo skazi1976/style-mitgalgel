@@ -63,6 +63,23 @@ const CATEGORIES = {
   other: "אחר",
 };
 
+const CATEGORY_EMOJI = {
+  "":            "✨",
+  dress:         "👗",
+  shirt:         "👚",
+  pants:         "👖",
+  jeans:         "👖",
+  skirt:         "🩱",
+  jacket:        "🧥",
+  shoes:         "👠",
+  bag:           "👜",
+  accessories:   "💍",
+  swimwear:      "🩲",
+  underwear:     "🩲",
+  kids:          "🧒",
+  other:         "🎀",
+};
+
 const CONDITIONS = {
   new: "חדש עם תווית",
   like_new: "כמו חדש",
@@ -214,14 +231,85 @@ function renderBottomNav(active) {
   document.body.appendChild(Object.assign(document.createElement("div"), { className: "bottom-nav-spacer" }));
 }
 
+// ---------- Push notifications ----------
+const Push = {
+  supported: () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
+
+  permission: () => (window.Notification && Notification.permission) || "default",
+
+  _urlB64ToUint8Array(b64) {
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const s = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(s);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  },
+
+  async getSubscription() {
+    if (!Push.supported()) return null;
+    const reg = await navigator.serviceWorker.ready;
+    return reg.pushManager.getSubscription();
+  },
+
+  async enable() {
+    if (!Push.supported()) throw new Error("הדפדפן לא תומך בהתראות");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("נדחתה הרשאה להתראות");
+
+    const keyRes = await api("/api/push/vapid-public");
+    if (!keyRes.key) throw new Error("שרת הפושים לא מוגדר");
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: Push._urlB64ToUint8Array(keyRes.key),
+      });
+    }
+    await api("/api/push/subscribe", {
+      method: "POST",
+      body: {
+        endpoint: sub.endpoint,
+        keys: sub.toJSON().keys,
+        categories: null,
+      },
+    });
+    localStorage.setItem("smg_push_enabled", "1");
+    return true;
+  },
+
+  async disable() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await api("/api/push/unsubscribe", { method: "POST", body: { endpoint: sub.endpoint } });
+      await sub.unsubscribe();
+    }
+    localStorage.setItem("smg_push_enabled", "0");
+  },
+
+  async isEnabled() {
+    if (!Push.supported()) return false;
+    if (Push.permission() !== "granted") return false;
+    const sub = await Push.getSubscription();
+    return !!sub;
+  },
+};
+
 // ---------- Card renderer ----------
 function itemCard(item) {
   const photo = item.photos?.[0] || "/placeholder.png";
   const sold = item.status === "sold";
+  const isNew = item.created_at && (Date.now() / 1000 - item.created_at < 86400 * 2);
+  let badge = "";
+  if (sold)      badge = '<div class="badge-sold">נמכר</div>';
+  else if (isNew) badge = '<div class="badge-new">חדש</div>';
   return `
     <div class="card" onclick="location.href='/item.html?id=${item.id}'">
       <div class="card-img" style="background-image:url('${photo}')">
-        ${sold ? '<div class="badge-sold">נמכר</div>' : ''}
+        ${badge}
       </div>
       <div class="card-body">
         <div class="card-title">${item.title}</div>

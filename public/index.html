@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 </head>
 <body>
 
@@ -19,6 +21,63 @@
 </header>
 
 <main class="container">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-text">
+      <h1>סטייל ששווה לגלגל 💖</h1>
+      <p>קונות ומוכרות יד שנייה — מאישה לאישה</p>
+    </div>
+    <a href="/upload.html" class="hero-cta">+ העלי פריט</a>
+  </section>
+
+  <!-- Install banner -->
+  <div class="install-banner" id="installBanner">
+    <button class="install-close" id="installClose" aria-label="סגור">✕</button>
+    <div class="install-icon">💃</div>
+    <div class="install-text">
+      <b>התקיני את האפליקציה</b>
+      <small>גישה מהירה, נוטיפיקציות, והכל עובד גם באופליין</small>
+    </div>
+    <button class="install-btn" id="installBtn">התקיני</button>
+  </div>
+
+  <!-- iOS install sheet (used for fallback instructions) -->
+  <div class="ios-sheet" id="iosSheet">
+    <div class="ios-sheet-inner">
+      <h3>איך להתקין ב-iPhone 📱</h3>
+      <ol>
+        <li>לחצי על כפתור השיתוף <b>⬆️</b> למטה בסרגל</li>
+        <li>גללי ובחרי <b>"הוספה למסך הבית"</b></li>
+        <li>לחצי <b>"הוספה"</b> — זהו! האפליקציה במסך הבית</li>
+      </ol>
+      <button class="btn btn-secondary" id="iosClose" style="width:100%">סגור</button>
+    </div>
+  </div>
+
+  <!-- Auto-popup install modal -->
+  <div class="install-modal" id="installModal">
+    <div class="install-modal-inner">
+      <button class="install-modal-x" id="installModalX" aria-label="סגור">✕</button>
+      <div class="install-modal-icon">💃</div>
+      <h3 id="installModalTitle">התקיני את האפליקציה</h3>
+      <p id="installModalBody">גישה מהירה, נוטיפיקציות על פריטים חדשים, ועבודה גם באופליין — בלחיצה אחת.</p>
+      <button class="btn install-modal-go" id="installModalGo">התקיני עכשיו</button>
+      <button class="install-modal-later" id="installModalLater">לא עכשיו</button>
+    </div>
+  </div>
+
+  <!-- Notification opt-in modal -->
+  <div class="install-modal" id="notifModal">
+    <div class="install-modal-inner">
+      <button class="install-modal-x" id="notifModalX" aria-label="סגור">✕</button>
+      <div class="install-modal-icon" style="font-size:38px">🔔</div>
+      <h3>להפעיל התראות?</h3>
+      <p>קבלי הודעה בכל פעם שמישהי מעלה פריט חדש — שמלות, נעליים, תיקים ועוד.<br>אפשר לכבות בכל רגע.</p>
+      <button class="btn install-modal-go" id="notifEnableBtn">כן, הפעילי</button>
+      <button class="install-modal-later" id="notifLaterBtn">לא עכשיו</button>
+    </div>
+  </div>
 
   <!-- Categories filter -->
   <div class="filters" id="categoryFilters"></div>
@@ -39,7 +98,14 @@
 
 </main>
 
+<a href="/upload.html" class="fab" title="העלי פריט">+</a>
+
 <script src="/app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+</script>
 <script>
 let currentPage = 1;
 let currentCategory = "";
@@ -51,7 +117,7 @@ const cats = [
   ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v })),
 ];
 document.getElementById("categoryFilters").innerHTML = cats
-  .map(c => `<button class="chip ${c.key === currentCategory ? "active" : ""}" data-cat="${c.key}">${c.label}</button>`)
+  .map(c => `<button class="chip ${c.key === currentCategory ? "active" : ""}" data-cat="${c.key}"><span>${CATEGORY_EMOJI[c.key] || "🏷️"}</span>${c.label}</button>`)
   .join("");
 
 document.getElementById("categoryFilters").addEventListener("click", (e) => {
@@ -117,6 +183,308 @@ document.getElementById("loginBtn").onclick = () => {
 
 renderBottomNav("home");
 loadItems(true);
+
+// ---------- PWA install: auto-detect + auto-popup ----------
+(function () {
+  const banner = document.getElementById("installBanner");
+  const bannerBtn = document.getElementById("installBtn");
+  const bannerClose = document.getElementById("installClose");
+  const modal = document.getElementById("installModal");
+  const modalTitle = document.getElementById("installModalTitle");
+  const modalBody  = document.getElementById("installModalBody");
+  const modalGo    = document.getElementById("installModalGo");
+  const modalLater = document.getElementById("installModalLater");
+  const modalX     = document.getElementById("installModalX");
+
+  // Already installed? Skip.
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  // Dismissed within the last 3 days? Skip popup, keep banner only.
+  const dismissedAt = parseInt(localStorage.getItem("smg_install_dismissed") || "0", 10);
+  const THREE_DAYS = 3 * 24 * 3600 * 1000;
+  const recentlyDismissed = Date.now() - dismissedAt < THREE_DAYS;
+
+  const ua = navigator.userAgent;
+  const isIOS     = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isAndroid = /Android/i.test(ua);
+  const isSamsung = /SamsungBrowser/i.test(ua);
+  const isFirefox = /Firefox|FxiOS/i.test(ua);
+  const isChrome  = /Chrome|CriOS|Chromium|CrMo|Edg|EdgA/i.test(ua) && !/OPR|OPiOS/i.test(ua);
+  const isInApp   = /FBAN|FBAV|Instagram|Line|MicroMessenger|WeChat|Twitter|TikTok|Snapchat|Pinterest|LinkedInApp|WhatsApp/i.test(ua);
+
+  banner.classList.add("show");
+
+  let deferredPrompt = null;
+  let autoPoppedThisLoad = false;
+
+  function openModal({ title, body, goText, goFn, hint, later = "לא עכשיו" }) {
+    modalTitle.textContent = title;
+    modalBody.innerHTML = body;
+    modalGo.textContent = goText;
+    modalGo.onclick = goFn;
+    modalLater.textContent = later;
+    if (hint) {
+      let h = modal.querySelector(".install-modal-hint");
+      if (!h) {
+        h = document.createElement("div");
+        h.className = "install-modal-hint";
+        modalGo.parentNode.insertBefore(h, modalGo);
+      }
+      h.innerHTML = hint;
+    } else {
+      const h = modal.querySelector(".install-modal-hint");
+      if (h) h.remove();
+    }
+    modal.classList.add("show");
+  }
+
+  function closeModal(remember = true) {
+    modal.classList.remove("show");
+    if (remember) localStorage.setItem("smg_install_dismissed", Date.now());
+  }
+
+  async function triggerNativeInstall() {
+    if (!deferredPrompt) return false;
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if (outcome === "accepted") {
+        banner.classList.remove("show");
+        modal.classList.remove("show");
+        return true;
+      }
+    } catch (_) { /* user-gesture expired */ }
+    return false;
+  }
+
+  function showChromeReadyModal() {
+    if (autoPoppedThisLoad) return;
+    autoPoppedThisLoad = true;
+    openModal({
+      title: "התקיני את סטייל מתגלגל",
+      body: `<ul class="install-modal-list">
+              <li>✨ גישה מהירה ממסך הבית</li>
+              <li>🔔 התראות על פריטים חדשים</li>
+              <li>📶 עובד גם ללא חיבור לאינטרנט</li>
+            </ul>
+            <p style="font-size:13px;color:#888">לחיצה תפתח דיאלוג התקנה רשמי של הדפדפן</p>`,
+      goText: "התקיני עכשיו",
+      goFn: triggerNativeInstall,
+    });
+  }
+
+  function showIOSModal() {
+    if (autoPoppedThisLoad) return;
+    autoPoppedThisLoad = true;
+    const isChromeOnIOS = /CriOS/i.test(ua);
+    if (isChromeOnIOS) {
+      openModal({
+        title: "פתחי ב-Safari",
+        body: `<p>ב-iPhone רק Safari יודע להתקין אפליקציה. העתיקי את הקישור ופתחי ב-Safari:</p>
+               <div style="background:#f5f5f5;padding:10px;border-radius:8px;font-family:monospace;font-size:13px;margin:6px 0 0">rollingstyle.org</div>`,
+        goText: "העתיקי קישור",
+        goFn: () => {
+          navigator.clipboard.writeText(location.href).then(() => {
+            modalGo.textContent = "הועתק ✓ פתחי Safari";
+          });
+        },
+      });
+      return;
+    }
+    openModal({
+      title: "התקנה באייפון 📱",
+      body: `<ol class="install-modal-list">
+              <li>1️⃣ לחצי על <b>כפתור השיתוף</b> למטה (ריבוע עם חץ ⬆️)</li>
+              <li>2️⃣ גללי ובחרי <b>"הוספה למסך הבית"</b></li>
+              <li>3️⃣ לחצי <b>"הוספה"</b> בפינה</li>
+            </ol>`,
+      hint: "⬇️ כפתור השיתוף נמצא בסרגל התחתון של Safari",
+      goText: "הבנתי",
+      goFn: () => closeModal(false),
+      later: "אולי אחר כך",
+    });
+  }
+
+  function showInAppModal() {
+    if (autoPoppedThisLoad) return;
+    autoPoppedThisLoad = true;
+    openModal({
+      title: "פתחי בדפדפן רגיל",
+      body: `<p>את נמצאת בדפדפן של אפליקציה (WhatsApp / Facebook / Instagram) שלא מאפשר התקנה של אפליקציות.</p>
+             <p style="margin-top:10px"><b>פתחי ב-Chrome או Safari</b> ואז תוכלי להתקין בלחיצה אחת.</p>`,
+      hint: isAndroid
+        ? "💡 לחצי על <b>⋮</b> בפינה ואז <b>'פתח ב-Chrome'</b>"
+        : "💡 לחצי על <b>⋯</b> ואז <b>'פתח ב-Safari'</b>",
+      goText: "העתיקי קישור",
+      goFn: () => {
+        navigator.clipboard.writeText(location.href).then(() => {
+          modalGo.textContent = "הועתק ✓";
+          if (isAndroid) {
+            setTimeout(() => {
+              window.location.href = `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`;
+            }, 600);
+          }
+        });
+      },
+    });
+  }
+
+  function showFallbackModal() {
+    if (autoPoppedThisLoad) return;
+    autoPoppedThisLoad = true;
+    const menuIcon = isSamsung ? "☰" : "⋮";
+    openModal({
+      title: "הוספה למסך הבית",
+      body: `<ol class="install-modal-list">
+              <li>1️⃣ פתחי את תפריט הדפדפן (<b>${menuIcon}</b>)</li>
+              <li>2️⃣ בחרי <b>"התקנת אפליקציה"</b> או <b>"הוספה למסך הבית"</b></li>
+              <li>3️⃣ אשרי — האייקון יופיע במסך הבית</li>
+            </ol>`,
+      hint: "💡 לחוויה הטובה ביותר, מומלץ להיכנס מ-Chrome",
+      goText: "הבנתי",
+      goFn: () => closeModal(false),
+      later: "אולי אחר כך",
+    });
+  }
+
+  // ---- Auto-popup logic ----
+  if (recentlyDismissed) {
+    // Respect user — banner still visible, but no auto-popup
+  } else if (isInApp) {
+    setTimeout(showInAppModal, 800);
+  } else if (isIOS) {
+    setTimeout(showIOSModal, 3500);
+  } else {
+    // Chrome/Edge/Samsung on Android or Desktop
+    // Wait for beforeinstallprompt, and if it arrives, auto-popup
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      showChromeReadyModal();
+    });
+    // If the event doesn't fire within 5s, show platform-appropriate fallback
+    setTimeout(() => {
+      if (deferredPrompt || autoPoppedThisLoad) return;
+      if (isAndroid) showFallbackModal();
+      // Desktop without prompt — skip nagging, banner stays visible
+    }, 5000);
+  }
+
+  // Also: if user scrolls/taps first and event arrives later, auto-popup then
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (!autoPoppedThisLoad && !recentlyDismissed) showChromeReadyModal();
+    // Ensure the banner button also works
+  });
+
+  // Banner button (fallback)
+  bannerBtn.addEventListener("click", async () => {
+    if (deferredPrompt) return triggerNativeInstall();
+    if (isInApp) return showInAppModal();
+    if (isIOS)   return showIOSModal();
+    if (isAndroid) return showFallbackModal();
+    showFallbackModal();
+  });
+
+  // Modal close buttons
+  modalLater.addEventListener("click", () => closeModal(true));
+  modalX.addEventListener("click", () => closeModal(true));
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(true); });
+
+  // Banner close
+  bannerClose.addEventListener("click", () => {
+    localStorage.setItem("smg_install_dismissed", Date.now());
+    banner.classList.remove("show");
+  });
+
+  // After installed
+  window.addEventListener("appinstalled", () => {
+    banner.classList.remove("show");
+    modal.classList.remove("show");
+    localStorage.setItem("smg_install_dismissed", Date.now());
+  });
+})();
+
+// ---------- Notifications opt-in modal ----------
+(async function () {
+  if (!Push.supported()) return;
+
+  const perm = Push.permission();
+
+  // Permission denied — can't recover from page
+  if (perm === "denied") return;
+
+  // Permission already granted → always (re)sync subscription to server
+  if (perm === "granted") {
+    try {
+      await Push.enable(); // idempotent — re-registers subscription with the server
+      toast("התראות פעילות 🔔");
+    } catch (e) {
+      console.error("push resync failed:", e);
+      toast("שגיאה: " + (e.message || ""));
+    }
+    return;
+  }
+
+  // perm === "default" — show opt-in banner
+  const notifDismissedAt = parseInt(localStorage.getItem("smg_notif_dismissed") || "0", 10);
+  const A_WEEK = 7 * 24 * 3600 * 1000;
+  if (Date.now() - notifDismissedAt < A_WEEK) return;
+
+  const modal = document.getElementById("notifModal");
+  const enableBtn = document.getElementById("notifEnableBtn");
+  const laterBtn  = document.getElementById("notifLaterBtn");
+  const xBtn      = document.getElementById("notifModalX");
+  const installModal = document.getElementById("installModal");
+
+  function dismiss(remember = true) {
+    modal.classList.remove("show");
+    if (remember) localStorage.setItem("smg_notif_dismissed", Date.now());
+  }
+
+  async function enableNotifs() {
+    enableBtn.disabled = true;
+    enableBtn.textContent = "...";
+    try {
+      await Push.enable();
+      enableBtn.textContent = "הופעל ✓";
+      toast("התראות הופעלו 🔔");
+      setTimeout(() => dismiss(true), 800);
+    } catch (e) {
+      toast(e.message || "נכשל");
+      enableBtn.disabled = false;
+      enableBtn.textContent = "כן, הפעילי";
+    }
+  }
+
+  enableBtn.addEventListener("click", enableNotifs);
+  laterBtn.addEventListener("click", () => dismiss(true));
+  xBtn.addEventListener("click", () => dismiss(true));
+  modal.addEventListener("click", (e) => { if (e.target === modal) dismiss(true); });
+
+  function tryShow() {
+    if (Push.permission() !== "default") return; // became granted/denied — skip
+    modal.classList.add("show");
+  }
+
+  // Delay so install modal gets priority; if install modal is up, wait longer
+  setTimeout(() => {
+    if (installModal && installModal.classList.contains("show")) {
+      const check = setInterval(() => {
+        if (!installModal.classList.contains("show")) {
+          clearInterval(check);
+          setTimeout(tryShow, 600);
+        }
+      }, 500);
+    } else {
+      tryShow();
+    }
+  }, 4000);
+})();
 </script>
 
 </body>

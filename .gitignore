@@ -3,3 +3,7 @@ node_modules/
 .dev.vars
 .env
 *.log
+
+# Local backups — contain user PII (phone numbers) and secret values.
+# Never push to the public repo. Keep safe locally.
+backups/

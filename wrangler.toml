@@ -11,14 +11,18 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "style_mitgalgel"
-database_id = "REPLACE_AFTER_CREATE"
+database_id = "887f9032-267f-4578-bed8-4a013714fc07"
 
 # R2 Bucket (photos)
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "style-mitgalgel-photos"
 
-# Environment variables
+# Public, non-sensitive variables only.
+# Secrets (ADMIN_PASSWORD, OTP_SECRET, VAPID_PRIVATE_KEY) are managed via:
+#   npx wrangler secret put <NAME>
 [vars]
-WHATSAPP_BOT_URL = "http://localhost:3001/send-otp"   # local Baileys bot endpoint
+WHATSAPP_BOT_URL = "https://donated-charity-podcast-elimination.trycloudflare.com/send-otp"
 SITE_NAME = "סטייל מתגלגל"
+VAPID_PUBLIC_KEY  = "BFhXAF4kLcerx0reVdA43V2TR-VGtPm5pSZso50KooCwRc4O20Y9V8MGiokmsFa-8zGbwB7HTNUnVhXkJ28hksY"
+VAPID_SUBJECT     = "mailto:admin@rollingstyle.org"

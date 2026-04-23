@@ -83,7 +83,10 @@ async function sendWhatsAppOTP(env, phone, code) {
     try {
       await fetch(env.WHATSAPP_BOT_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-otp-secret": env.OTP_SECRET || "rolling-style-otp-2026",
+        },
         body: JSON.stringify({ phone, message: msg }),
       });
     } catch (e) {
@@ -287,7 +290,14 @@ async function createItem(req, env) {
   await env.DB.prepare("UPDATE users SET items_listed = items_listed + 1 WHERE id = ?")
     .bind(user.id).run();
 
-  return json({ ok: true, id: result.meta.last_row_id });
+  // Fire-and-forget push to interested subscribers (don't block the response)
+  const itemId = result.meta.last_row_id;
+  sendPushForNewItem(env, {
+    id: itemId, user_id: user.id, title, price, category,
+    photos: JSON.stringify(photoUrls),
+  }).catch((e) => console.error("push failed:", e.message));
+
+  return json({ ok: true, id: itemId });
 }
 
 async function patchItem(req, env, id) {
@@ -421,6 +431,365 @@ async function servePhoto(env, key) {
 }
 
 // ============================================================
+// Web Push (aes128gcm, VAPID)
+// ============================================================
+
+function b64urlDecode(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function b64urlEncode(buf) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function concatBytes(...arrs) {
+  const len = arrs.reduce((a, b) => a + b.length, 0);
+  const out = new Uint8Array(len);
+  let o = 0;
+  for (const a of arrs) { out.set(a, o); o += a.length; }
+  return out;
+}
+const _utf8 = (s) => new TextEncoder().encode(s);
+
+async function hkdf(salt, ikm, info, length) {
+  const key = await crypto.subtle.importKey("raw", ikm, { name: "HKDF" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info }, key, length * 8
+  );
+  return new Uint8Array(bits);
+}
+
+async function vapidJWT(env, audience) {
+  const header  = { typ: "JWT", alg: "ES256" };
+  const payload = {
+    aud: audience,
+    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
+    sub: env.VAPID_SUBJECT || "mailto:admin@rollingstyle.org",
+  };
+  const h = b64urlEncode(_utf8(JSON.stringify(header)));
+  const p = b64urlEncode(_utf8(JSON.stringify(payload)));
+  const toSign = _utf8(h + "." + p);
+
+  const pubRaw = b64urlDecode(env.VAPID_PUBLIC_KEY);
+  const jwk = {
+    kty: "EC", crv: "P-256",
+    x: b64urlEncode(pubRaw.slice(1, 33)),
+    y: b64urlEncode(pubRaw.slice(33, 65)),
+    d: env.VAPID_PRIVATE_KEY,
+    ext: true,
+  };
+  const key = await crypto.subtle.importKey(
+    "jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" }, key, toSign
+  ));
+  return `${h}.${p}.${b64urlEncode(sig)}`;
+}
+
+async function sendWebPush(env, sub, payloadStr) {
+  const payload  = _utf8(payloadStr);
+  const p256dh   = b64urlDecode(sub.p256dh);
+  const auth     = b64urlDecode(sub.auth);
+
+  const serverKey = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]
+  );
+  const serverPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", serverKey.publicKey));
+  const clientPubKey = await crypto.subtle.importKey(
+    "raw", p256dh, { name: "ECDH", namedCurve: "P-256" }, false, []
+  );
+  const sharedSecret = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "ECDH", public: clientPubKey }, serverKey.privateKey, 256
+  ));
+
+  const salt    = crypto.getRandomValues(new Uint8Array(16));
+  const keyInfo = concatBytes(_utf8("WebPush: info\0"), p256dh, serverPubRaw);
+  const ikm     = await hkdf(auth, sharedSecret, keyInfo, 32);
+  const cek     = await hkdf(salt, ikm, _utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce   = await hkdf(salt, ikm, _utf8("Content-Encoding: nonce\0"), 12);
+
+  const aesKey = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+  const padded = concatBytes(payload, new Uint8Array([0x02]));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce }, aesKey, padded
+  ));
+
+  // Header: salt(16) + rs(4, big-endian = 4096) + idlen(1=65) + keyid(serverPubRaw) + ciphertext
+  const body = concatBytes(
+    salt,
+    new Uint8Array([0, 0, 0x10, 0]),
+    new Uint8Array([serverPubRaw.length]),
+    serverPubRaw,
+    cipher,
+  );
+
+  const endpointURL = new URL(sub.endpoint);
+  const jwt = await vapidJWT(env, endpointURL.origin);
+
+  const res = await fetch(sub.endpoint, {
+    method: "POST",
+    headers: {
+      "TTL": "86400",
+      "Content-Encoding": "aes128gcm",
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(body.byteLength),
+      "Authorization": `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY}`,
+    },
+    body,
+  });
+  return res;
+}
+
+async function deliverPush(env, subscriptions, payloadObj) {
+  const payloadStr = JSON.stringify(payloadObj);
+  const results = await Promise.all(subscriptions.map(async (s) => {
+    try {
+      const r = await sendWebPush(env, s, payloadStr);
+      if (r.status === 404 || r.status === 410) {
+        // Gone — remove subscription
+        await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(s.endpoint).run();
+        return { ok: false, status: r.status, gone: true };
+      }
+      if (r.ok) {
+        await env.DB.prepare("UPDATE push_subscriptions SET last_used = ?, failures = 0 WHERE endpoint = ?")
+          .bind(now(), s.endpoint).run();
+        return { ok: true, status: r.status };
+      }
+      await env.DB.prepare("UPDATE push_subscriptions SET failures = failures + 1 WHERE endpoint = ?")
+        .bind(s.endpoint).run();
+      return { ok: false, status: r.status };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }));
+  return {
+    total: subscriptions.length,
+    sent: results.filter(r => r.ok).length,
+    gone: results.filter(r => r.gone).length,
+    failed: results.filter(r => !r.ok && !r.gone).length,
+  };
+}
+
+// ============================================================
+// Push subscriptions API
+// ============================================================
+
+async function pushSubscribe(req, env) {
+  const body = await req.json().catch(() => ({}));
+  const { endpoint, keys, categories } = body || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return err("missing subscription fields");
+
+  const user = await getUser(req, env);
+  const userId = user?.id || null;
+  const catsJson = categories ? JSON.stringify(categories) : null;
+  const t = now();
+
+  await env.DB.prepare(
+    `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, categories, created_at, last_used)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET
+       user_id = excluded.user_id,
+       p256dh = excluded.p256dh,
+       auth = excluded.auth,
+       categories = excluded.categories,
+       last_used = excluded.last_used,
+       failures = 0`
+  ).bind(userId, endpoint, keys.p256dh, keys.auth, catsJson, t, t).run();
+
+  return json({ ok: true });
+}
+
+async function pushUnsubscribe(req, env) {
+  const { endpoint } = await req.json().catch(() => ({}));
+  if (!endpoint) return err("missing endpoint");
+  await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run();
+  return json({ ok: true });
+}
+
+async function sendPushForNewItem(env, item) {
+  // Fetch subscriptions interested in this item's category (or unspecified = all)
+  const { results } = await env.DB.prepare(
+    `SELECT endpoint, p256dh, auth, categories
+     FROM push_subscriptions
+     WHERE user_id IS NULL OR user_id != ?`
+  ).bind(item.user_id).all();
+
+  const targets = results.filter((s) => {
+    if (!s.categories) return true;
+    try { return JSON.parse(s.categories).includes(item.category); }
+    catch { return true; }
+  });
+  if (!targets.length) return { sent: 0 };
+
+  const preview = (item.photos && JSON.parse(item.photos)[0]) || undefined;
+  const payload = {
+    title: "פריט חדש בסטייל מתגלגל 💃",
+    body:  `${item.title} — ₪${item.price}`,
+    url:   `/item.html?id=${item.id}`,
+    icon:  "/icon-192.png",
+    badge: "/icon-192.png",
+    image: preview,
+    tag:   `item-${item.id}`,
+  };
+  return await deliverPush(env, targets, payload);
+}
+
+// ============================================================
+// Admin API
+// ============================================================
+
+function requireAdmin(req, env) {
+  const auth = req.headers.get("Authorization") || "";
+  if (!auth.startsWith("AdminPass ")) return false;
+  const provided = auth.slice(10);
+  const expected = env.ADMIN_PASSWORD || "";
+  if (!expected || provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < provided.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+async function adminLogin(req, env) {
+  const { password } = await req.json().catch(() => ({}));
+  if (!env.ADMIN_PASSWORD) return err("admin not configured", 500);
+  if (password !== env.ADMIN_PASSWORD) return err("סיסמה שגויה", 401);
+  return json({ ok: true });
+}
+
+async function adminStats(env) {
+  const q = (sql) => env.DB.prepare(sql).first();
+  const [u, items, act, sold, hid, rep, views, favs] = await Promise.all([
+    q("SELECT COUNT(*) c FROM users"),
+    q("SELECT COUNT(*) c FROM items"),
+    q("SELECT COUNT(*) c FROM items WHERE status='active'"),
+    q("SELECT COUNT(*) c FROM items WHERE status='sold'"),
+    q("SELECT COUNT(*) c FROM items WHERE status='hidden'"),
+    q("SELECT COUNT(*) c FROM reports WHERE resolved=0"),
+    q("SELECT COALESCE(SUM(views),0) c FROM items"),
+    q("SELECT COUNT(*) c FROM favorites"),
+  ]);
+  return json({
+    users: u.c, items: items.c, active: act.c, sold: sold.c, hidden: hid.c,
+    reports_open: rep.c, views: views.c, favorites: favs.c,
+  });
+}
+
+async function adminUsers(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, phone, name, city, created_at, last_active,
+            items_listed, items_sold, rating, banned
+     FROM users ORDER BY created_at DESC LIMIT 500`
+  ).all();
+  return json({ users: results });
+}
+
+async function adminBanUser(env, id) {
+  await env.DB.prepare("UPDATE users SET banned = 1 - banned WHERE id = ?").bind(id).run();
+  const u = await env.DB.prepare("SELECT id, banned FROM users WHERE id = ?").bind(id).first();
+  if (!u) return err("not found", 404);
+  if (u.banned) await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(id).run();
+  return json({ ok: true, banned: !!u.banned });
+}
+
+async function adminDeleteUser(env, id) {
+  await env.DB.prepare("DELETE FROM favorites WHERE user_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM sessions  WHERE user_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM items     WHERE user_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM users     WHERE id = ?").bind(id).run();
+  return json({ ok: true });
+}
+
+async function adminItems(env, url) {
+  const status = url.searchParams.get("status");
+  const where = status ? "WHERE i.status = ?" : "";
+  const bind  = status ? [status] : [];
+  const { results } = await env.DB.prepare(
+    `SELECT i.id, i.title, i.price, i.category, i.condition, i.status,
+            i.photos, i.views, i.favorites_count, i.created_at,
+            u.id AS user_id, u.name AS seller_name, u.phone AS seller_phone
+     FROM items i LEFT JOIN users u ON u.id = i.user_id
+     ${where}
+     ORDER BY i.created_at DESC LIMIT 500`
+  ).bind(...bind).all();
+  return json({
+    items: results.map((r) => ({ ...r, photos: JSON.parse(r.photos || "[]") })),
+  });
+}
+
+async function adminPatchItem(req, env, id) {
+  const body = await req.json().catch(() => ({}));
+  const allowed = ["title", "price", "status", "category", "brand", "size", "city", "description"];
+  const sets = [];
+  const vals = [];
+  for (const k of allowed) {
+    if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
+  }
+  if (!sets.length) return err("no fields", 400);
+  vals.push(id);
+  await env.DB.prepare(`UPDATE items SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return json({ ok: true });
+}
+
+async function adminDeleteItem(env, id) {
+  await env.DB.prepare("DELETE FROM favorites WHERE item_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM reports   WHERE item_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM items     WHERE id = ?").bind(id).run();
+  return json({ ok: true });
+}
+
+async function adminReports(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT r.id, r.reason, r.created_at, r.resolved,
+            r.item_id, i.title AS item_title,
+            r.reporter_id, u.name AS reporter_name
+     FROM reports r
+     LEFT JOIN items i ON i.id = r.item_id
+     LEFT JOIN users u ON u.id = r.reporter_id
+     ORDER BY r.resolved ASC, r.created_at DESC LIMIT 500`
+  ).all();
+  return json({ reports: results });
+}
+
+async function adminResolveReport(env, id) {
+  await env.DB.prepare("UPDATE reports SET resolved = 1 WHERE id = ?").bind(id).run();
+  return json({ ok: true });
+}
+
+async function adminPushBroadcast(req, env) {
+  const body = await req.json().catch(() => ({}));
+  const { title, message, url, category } = body;
+  if (!title || !message) return err("title and message required");
+
+  let sql = "SELECT endpoint, p256dh, auth, categories FROM push_subscriptions";
+  const { results } = await env.DB.prepare(sql).all();
+
+  const targets = category
+    ? results.filter((s) => {
+        if (!s.categories) return true;
+        try { return JSON.parse(s.categories).includes(category); } catch { return true; }
+      })
+    : results;
+
+  const payload = {
+    title,
+    body: message,
+    url: url || "/",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: "broadcast-" + now(),
+  };
+  const stats = await deliverPush(env, targets, payload);
+  return json({ ok: true, ...stats });
+}
+
+// ============================================================
 // Router
 // ============================================================
 
@@ -464,6 +833,42 @@ export default {
 
       if (path === "/api/me/favorites" && method === "GET") return await myFavorites(req, env);
       if (path === "/api/me/items"     && method === "GET") return await myItems(req, env);
+
+      // Web Push
+      if (path === "/api/push/vapid-public" && method === "GET") {
+        return json({ key: env.VAPID_PUBLIC_KEY || "" });
+      }
+      if (path === "/api/push/subscribe"   && method === "POST")   return await pushSubscribe(req, env);
+      if (path === "/api/push/unsubscribe" && method === "POST")   return await pushUnsubscribe(req, env);
+
+      // Admin API
+      if (path.startsWith("/api/admin/")) {
+        if (path === "/api/admin/login" && method === "POST") return await adminLogin(req, env);
+        if (!requireAdmin(req, env)) return err("unauthorized", 401);
+
+        if (path === "/api/admin/stats"   && method === "GET") return await adminStats(env);
+        if (path === "/api/admin/users"   && method === "GET") return await adminUsers(env);
+        if (path === "/api/admin/items"   && method === "GET") return await adminItems(env, url);
+        if (path === "/api/admin/reports" && method === "GET") return await adminReports(env);
+        if (path === "/api/admin/push/broadcast" && method === "POST") return await adminPushBroadcast(req, env);
+
+        let m;
+        if ((m = path.match(/^\/api\/admin\/users\/(\d+)\/ban$/)) && method === "POST")
+          return await adminBanUser(env, parseInt(m[1]));
+        if ((m = path.match(/^\/api\/admin\/users\/(\d+)$/)) && method === "DELETE")
+          return await adminDeleteUser(env, parseInt(m[1]));
+
+        if ((m = path.match(/^\/api\/admin\/items\/(\d+)$/))) {
+          const id = parseInt(m[1]);
+          if (method === "PATCH")  return await adminPatchItem(req, env, id);
+          if (method === "DELETE") return await adminDeleteItem(env, id);
+        }
+
+        if ((m = path.match(/^\/api\/admin\/reports\/(\d+)\/resolve$/)) && method === "POST")
+          return await adminResolveReport(env, parseInt(m[1]));
+
+        return err("not found", 404);
+      }
 
       // Fall through to static assets
       return env.ASSETS ? env.ASSETS.fetch(req) : err("not found", 404);
