@@ -1,0 +1,24 @@
+name = "style-mitgalgel"
+main = "src/worker.js"
+compatibility_date = "2024-09-01"
+
+# Static assets (frontend)
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "style_mitgalgel"
+database_id = "REPLACE_AFTER_CREATE"
+
+# R2 Bucket (photos)
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "style-mitgalgel-photos"
+
+# Environment variables
+[vars]
+WHATSAPP_BOT_URL = "http://localhost:3001/send-otp"   # local Baileys bot endpoint
+SITE_NAME = "סטייל מתגלגל"

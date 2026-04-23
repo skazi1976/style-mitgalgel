@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#ff6b8a">
+  <title>המועדפים שלי — סטייל מתגלגל</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo" style="flex:1">❤️ המועדפים שלי</div>
+</header>
+
+<main class="container">
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">
+    <div class="emoji">💔</div>
+    <h3>אין עדיין מועדפים</h3>
+    <p class="text-muted">לחצי על ❤️ בפריטים שאת אוהבת</p>
+    <br>
+    <a href="/" class="btn" style="display:inline-block">לדף הבית</a>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+if (!Auth.isLoggedIn()) showLoginModal(() => location.reload());
+
+async function load() {
+  try {
+    const res = await api("/api/me/favorites");
+    if (res.items.length === 0) {
+      document.getElementById("empty").style.display = "block";
+    } else {
+      document.getElementById("grid").innerHTML = res.items.map(itemCard).join("");
+    }
+  } catch (err) { toast(err.message); }
+}
+
+renderBottomNav("favorites");
+load();
+</script>
+</body>
+</html>

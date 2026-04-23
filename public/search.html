@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#ff6b8a">
+  <title>חיפוש — סטייל מתגלגל</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="icon-btn" onclick="history.back()">→</button>
+  <input type="search" id="q" class="search-input" placeholder="חיפוש..." autofocus>
+</header>
+
+<main class="container">
+  <div class="form" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer; font-weight:600; padding:8px 0">⚙️ סינון מתקדם</summary>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px">
+        <div><label>קטגוריה</label><select id="category"><option value="">הכל</option></select></div>
+        <div><label>עיר</label><select id="city"><option value="">הכל</option></select></div>
+        <div><label>מותג</label><input type="text" id="brand" placeholder="זארה / ..."></div>
+        <div><label>מידה</label><input type="text" id="size" placeholder="S / M / 38"></div>
+        <div><label>מחיר מ-</label><input type="number" id="min" inputmode="numeric"></div>
+        <div><label>מחיר עד-</label><input type="number" id="max" inputmode="numeric"></div>
+      </div>
+      <button class="btn" id="applyFilters" style="margin-top:12px">החלי סינון</button>
+    </details>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div id="loading" style="display:none"><div class="spinner"></div></div>
+  <div id="empty" class="empty" style="display:none">
+    <div class="emoji">🔍</div>
+    <h3>לא מצאנו פריטים</h3>
+    <p class="text-muted">נסי מילת חיפוש אחרת</p>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+document.getElementById("category").innerHTML +=
+  Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+document.getElementById("city").innerHTML +=
+  CITIES.map(c => `<option>${c}</option>`).join("");
+
+let timer;
+document.getElementById("q").addEventListener("input", () => {
+  clearTimeout(timer);
+  timer = setTimeout(search, 400);
+});
+document.getElementById("applyFilters").onclick = search;
+
+async function search() {
+  const params = new URLSearchParams();
+  const q = document.getElementById("q").value.trim();
+  if (q) params.set("q", q);
+  for (const k of ["category", "brand", "size", "city", "min", "max"]) {
+    const v = document.getElementById(k).value.trim();
+    if (v) params.set(k, v);
+  }
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("empty").style.display = "none";
+  try {
+    const res = await api("/api/items?" + params);
+    document.getElementById("loading").style.display = "none";
+    const grid = document.getElementById("grid");
+    if (res.items.length === 0) {
+      grid.innerHTML = "";
+      document.getElementById("empty").style.display = "block";
+    } else {
+      grid.innerHTML = res.items.map(itemCard).join("");
+    }
+  } catch (err) {
+    document.getElementById("loading").style.display = "none";
+    toast(err.message);
+  }
+}
+
+renderBottomNav("search");
+search();
+</script>
+</body>
+</html>

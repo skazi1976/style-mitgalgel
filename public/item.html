@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#ff6b8a">
+  <title>פריט — סטייל מתגלגל</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="icon-btn" onclick="history.back()">→</button>
+  <div class="logo" style="flex:1">סטייל מתגלגל</div>
+  <button class="icon-btn" id="favBtn" title="הוסיפי למועדפים">🤍</button>
+</header>
+
+<main class="container">
+  <div id="content"><div class="spinner"></div></div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+const id = parseInt(new URLSearchParams(location.search).get("id"));
+let item = null;
+
+async function load() {
+  try {
+    const res = await api("/api/items/" + id);
+    item = res.item;
+    render();
+    api("/api/items/" + id + "/view", { method: "POST" }).catch(() => {});
+  } catch (err) {
+    document.getElementById("content").innerHTML = `<div class="empty"><div class="emoji">😢</div><h3>${err.message}</h3></div>`;
+  }
+}
+
+function render() {
+  const me = Auth.user();
+  const isOwner = me && me.id === item.user_id;
+  const sellerInitial = (item.seller_name || "?").charAt(0);
+  const waText = encodeURIComponent(`היי ${item.seller_name}, ראיתי את "${item.title}" ב-${formatPrice(item.price)} בסטייל מתגלגל. עוד מעוניינת?`);
+  const waLink = `https://wa.me/${item.seller_phone}?text=${waText}`;
+
+  document.getElementById("content").innerHTML = `
+    <div class="gallery">
+      ${item.photos.map(p => `<img src="${p}" alt="${item.title}">`).join("")}
+    </div>
+
+    <div class="item-info">
+      <div class="item-title">${item.title}</div>
+      <div class="item-price">${formatPrice(item.price)}</div>
+
+      ${item.description ? `<p style="margin-bottom:16px; line-height:1.6">${item.description}</p>` : ""}
+
+      <div class="attr-grid">
+        ${item.brand ? `<div class="attr"><span class="label">מותג</span><span class="value">${item.brand}</span></div>` : ""}
+        ${item.size ? `<div class="attr"><span class="label">מידה</span><span class="value">${item.size}</span></div>` : ""}
+        <div class="attr"><span class="label">קטגוריה</span><span class="value">${CATEGORIES[item.category] || item.category}</span></div>
+        <div class="attr"><span class="label">מצב</span><span class="value">${CONDITIONS[item.condition] || item.condition}</span></div>
+        ${item.city ? `<div class="attr"><span class="label">עיר</span><span class="value">${item.city}</span></div>` : ""}
+        <div class="attr"><span class="label">פורסם</span><span class="value">${timeAgo(item.created_at)}</span></div>
+      </div>
+
+      <div class="seller-card">
+        <div class="seller-avatar">${sellerInitial}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${item.seller_name}</div>
+          <div class="text-muted">⭐ ${item.seller_rating.toFixed(1)} · ${item.seller_items_sold} מכירות</div>
+        </div>
+      </div>
+
+      ${isOwner ? `
+        <div class="form">
+          <button class="btn btn-secondary" onclick="markSold()">סמני כנמכר</button>
+          <button class="btn btn-secondary" onclick="deleteItem()" style="color:var(--red)">מחקי פריט</button>
+        </div>
+      ` : item.status === "sold" ? `
+        <div class="empty"><div class="emoji">😔</div><h3>הפריט נמכר</h3></div>
+      ` : `
+        <a href="${waLink}" target="_blank" class="btn btn-wa">
+          📱 שלחי הודעה ב-WhatsApp
+        </a>
+        <p class="text-center text-muted" style="margin-top:12px; font-size:12px">
+          🔒 המספר שלך לא נחשף — ההודעה נשלחת מהWhatsApp שלך ישירות
+        </p>
+      `}
+
+      <p class="text-center" style="margin-top:24px">
+        <button class="text-muted" onclick="reportItem()" style="font-size:13px">⚠️ דווחי על פריט</button>
+      </p>
+    </div>
+  `;
+
+  document.getElementById("favBtn").onclick = toggleFav;
+}
+
+async function toggleFav() {
+  if (!Auth.isLoggedIn()) return showLoginModal();
+  try {
+    const res = await api(`/api/items/${id}/favorite`, { method: "POST" });
+    document.getElementById("favBtn").textContent = res.favorited ? "❤️" : "🤍";
+    toast(res.favorited ? "נוסף למועדפים" : "הוסר ממועדפים");
+  } catch (err) { toast(err.message); }
+}
+
+async function markSold() {
+  if (!confirm("לסמן את הפריט כנמכר?")) return;
+  try {
+    await api("/api/items/" + id, { method: "PATCH", body: { status: "sold" } });
+    toast("סומן כנמכר 🎉");
+    setTimeout(() => location.reload(), 1000);
+  } catch (err) { toast(err.message); }
+}
+
+async function deleteItem() {
+  if (!confirm("למחוק את הפריט? אי אפשר לבטל!")) return;
+  try {
+    await api("/api/items/" + id, { method: "DELETE" });
+    toast("נמחק");
+    setTimeout(() => location.href = "/profile.html", 1000);
+  } catch (err) { toast(err.message); }
+}
+
+async function reportItem() {
+  const reason = prompt("מה הבעיה? (פריט מזויף / לא תקין / ספאם / אחר)");
+  if (!reason) return;
+  try {
+    await api(`/api/items/${id}/report`, { method: "POST", body: { reason } });
+    toast("תודה, הדיווח התקבל");
+  } catch (err) { toast(err.message); }
+}
+
+renderBottomNav("");
+load();
+</script>
+
+</body>
+</html>

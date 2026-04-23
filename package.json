@@ -1,0 +1,16 @@
+{
+  "name": "style-mitgalgel",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create style_mitgalgel",
+    "db:init": "wrangler d1 execute style_mitgalgel --remote --file=schema.sql",
+    "db:init:local": "wrangler d1 execute style_mitgalgel --local --file=schema.sql",
+    "r2:create": "wrangler r2 bucket create style-mitgalgel-photos"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  }
+}

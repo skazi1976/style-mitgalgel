@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#ff6b8a">
+  <title>סטייל מתגלגל — קונים ומוכרים בגדים יד שנייה</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">סטייל מתגלגל</div>
+  <input type="search" id="searchBox" class="search-input" placeholder="חיפוש שמלות, ג'ינסים, מותגים...">
+  <button class="icon-btn" id="loginBtn" title="התחברות">👤</button>
+</header>
+
+<main class="container">
+
+  <!-- Categories filter -->
+  <div class="filters" id="categoryFilters"></div>
+
+  <!-- Item grid -->
+  <div id="grid" class="grid"></div>
+
+  <div id="loading" style="display:none"><div class="spinner"></div></div>
+  <div id="empty" class="empty" style="display:none">
+    <div class="emoji">🛍️</div>
+    <h3>אין עדיין פריטים</h3>
+    <p class="text-muted">היי הראשונה להעלות פריט!</p>
+    <br>
+    <a href="/upload.html" class="btn">+ העלאת פריט</a>
+  </div>
+
+  <button id="loadMore" class="btn btn-secondary" style="display:none; margin: 24px auto; max-width:200px">טעני עוד</button>
+
+</main>
+
+<script src="/app.js"></script>
+<script>
+let currentPage = 1;
+let currentCategory = "";
+let currentQuery = "";
+
+// Category chips
+const cats = [
+  { key: "", label: "הכל" },
+  ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v })),
+];
+document.getElementById("categoryFilters").innerHTML = cats
+  .map(c => `<button class="chip ${c.key === currentCategory ? "active" : ""}" data-cat="${c.key}">${c.label}</button>`)
+  .join("");
+
+document.getElementById("categoryFilters").addEventListener("click", (e) => {
+  if (!e.target.classList.contains("chip")) return;
+  document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+  e.target.classList.add("active");
+  currentCategory = e.target.dataset.cat;
+  currentPage = 1;
+  loadItems(true);
+});
+
+// Search
+const searchBox = document.getElementById("searchBox");
+let searchTimer;
+searchBox.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    currentQuery = searchBox.value.trim();
+    currentPage = 1;
+    loadItems(true);
+  }, 400);
+});
+
+// Load
+async function loadItems(reset) {
+  const grid = document.getElementById("grid");
+  const loading = document.getElementById("loading");
+  const empty = document.getElementById("empty");
+  const loadMore = document.getElementById("loadMore");
+
+  loading.style.display = "block";
+  if (reset) grid.innerHTML = "";
+
+  try {
+    const params = new URLSearchParams();
+    if (currentQuery) params.set("q", currentQuery);
+    if (currentCategory) params.set("category", currentCategory);
+    params.set("page", currentPage);
+
+    const res = await api("/api/items?" + params);
+    loading.style.display = "none";
+
+    if (currentPage === 1 && res.items.length === 0) {
+      empty.style.display = "block";
+      loadMore.style.display = "none";
+      return;
+    }
+    empty.style.display = "none";
+    grid.insertAdjacentHTML("beforeend", res.items.map(itemCard).join(""));
+    loadMore.style.display = res.has_more ? "block" : "none";
+  } catch (err) {
+    loading.style.display = "none";
+    toast(err.message);
+  }
+}
+
+document.getElementById("loadMore").onclick = () => { currentPage++; loadItems(false); };
+
+document.getElementById("loginBtn").onclick = () => {
+  if (Auth.isLoggedIn()) location.href = "/profile.html";
+  else showLoginModal();
+};
+
+renderBottomNav("home");
+loadItems(true);
+</script>
+
+</body>
+</html>
