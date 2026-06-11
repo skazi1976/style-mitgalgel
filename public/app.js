@@ -21,6 +21,27 @@ function smgSource() {
   try { return localStorage.getItem("smg_src") || undefined; } catch (e) { return undefined; }
 }
 
+// ---------- Facebook Pixel ----------
+// Loads the pixel + fires PageView on every page. Used to measure Facebook ad
+// conversions and to build retargeting audiences. CompleteRegistration is fired
+// from fbTrackSignup() when a NEW user registers (isNew from the server).
+(function loadFbPixel() {
+  try {
+    if (window.fbq) return;
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1558484941881754');
+    fbq('track', 'PageView');
+  } catch (e) {}
+})();
+// Fire the registration conversion (only on a genuinely new signup).
+function fbTrackSignup() {
+  try { if (window.fbq) fbq('track', 'CompleteRegistration'); } catch (e) {}
+}
+
 // ---------- Auth state (localStorage) ----------
 const Auth = {
   token: () => localStorage.getItem("smg_token"),
@@ -104,7 +125,7 @@ async function api(path, opts = {}) {
     const data = await res.json();
     if (res.ok && data.ok) {
       Auth.set(data.token, data.user);
-      if (data.isNew) localStorage.setItem("smg_welcome_push", "1");
+      if (data.isNew) { localStorage.setItem("smg_welcome_push", "1"); fbTrackSignup(); }
       // Tiny delay so toast lib (loaded later) has a chance — and refresh page state
       setTimeout(() => location.reload(), 200);
     }
@@ -260,7 +281,7 @@ function showLoginModal(onSuccess) {
         }
         const res = await window.FirebaseAuth.login(idToken);
         Auth.set(res.token, res.user);
-        if (res.isNew) localStorage.setItem("smg_welcome_push", "1");
+        if (res.isNew) { localStorage.setItem("smg_welcome_push", "1"); fbTrackSignup(); }
         toast("ברוכה הבאה!");
         modal.classList.remove("show");
         if (onSuccess) onSuccess(res.user);
@@ -366,7 +387,7 @@ function showLoginModal(onSuccess) {
           body: { phone: pendingPhone, code, name: name || undefined, source: smgSource() },
         });
         Auth.set(res.token, res.user);
-        if (res.isNew) localStorage.setItem("smg_welcome_push", "1");
+        if (res.isNew) { localStorage.setItem("smg_welcome_push", "1"); fbTrackSignup(); }
         toast("ברוכה הבאה!");
         modal.classList.remove("show");
         if (onSuccess) onSuccess(res.user);
