@@ -188,6 +188,23 @@ function cleanSource(s) {
   return v || null;
 }
 
+// Logs an anonymous landing visit that carried a utm_source (e.g. a Facebook
+// ad click), so the admin can measure total traffic per channel — including
+// visitors who never registered. One row per browser session (client dedups).
+async function trackVisit(req, env) {
+  const { source, campaign, path } = await req.json().catch(() => ({}));
+  const src = cleanSource(source);
+  if (!src) return json({ ok: true }); // only count tagged traffic
+  const camp = (typeof campaign === "string" ? campaign : "").slice(0, 60) || null;
+  const p = (typeof path === "string" ? path : "").slice(0, 120) || null;
+  try {
+    await env.DB.prepare(
+      "INSERT INTO visits (source, campaign, path, ts) VALUES (?, ?, ?, ?)"
+    ).bind(src, camp, p, now()).run();
+  } catch (e) {}
+  return json({ ok: true });
+}
+
 async function verifyOtp(req, env) {
   const { phone: rawPhone, code, name, source } = await req.json().catch(() => ({}));
   const signupSource = cleanSource(source);
@@ -953,7 +970,7 @@ async function adminLogin(req, env) {
 async function adminStats(env) {
   const q = (sql) => env.DB.prepare(sql).first();
   const sevenDaysAgo = now() - 7 * 86400;
-  const [u, items, act, sold, hid, rep, views, favs, inst, instIos, instAndroid, instActive, push, instApp, instAppActive, instAppPush, fbSignups] = await Promise.all([
+  const [u, items, act, sold, hid, rep, views, favs, inst, instIos, instAndroid, instActive, push, instApp, instAppActive, instAppPush, fbSignups, fbVisits] = await Promise.all([
     q("SELECT COUNT(*) c FROM users"),
     q("SELECT COUNT(*) c FROM items"),
     q("SELECT COUNT(*) c FROM items WHERE status='active'"),
@@ -971,6 +988,7 @@ async function adminStats(env) {
     env.DB.prepare("SELECT COUNT(*) c FROM installs WHERE is_app=1 AND last_seen > ?").bind(sevenDaysAgo).first(),
     q("SELECT COUNT(*) c FROM installs WHERE is_app=1 AND push_on=1"),
     q("SELECT COUNT(*) c FROM users WHERE signup_source='facebook'"),
+    q("SELECT COUNT(*) c FROM visits WHERE source='facebook'").catch(() => ({ c: 0 })),
   ]);
   return json({
     users: u.c, items: items.c, active: act.c, sold: sold.c, hidden: hid.c,
@@ -981,6 +999,7 @@ async function adminStats(env) {
     installs_app_push: instAppPush.c,
     push_enabled: push.c,
     signups_facebook: fbSignups.c,
+    visits_facebook: (fbVisits && fbVisits.c) || 0,
   });
 }
 
@@ -1369,6 +1388,9 @@ export default {
           headers: respHeaders,
         });
       }
+
+      // Anonymous traffic tracking (UTM landing beacon)
+      if (path === "/api/track-visit" && method === "POST") return await trackVisit(req, env);
 
       // Auth
       if (path === "/api/auth/firebase-login" && method === "POST") return await firebaseLogin(req, env);

@@ -9,10 +9,23 @@ const API = ""; // same origin (worker serves static + API)
   try {
     const p = new URLSearchParams(location.search);
     const src = (p.get("utm_source") || "").trim().toLowerCase();
-    if (src && !localStorage.getItem("smg_src")) {
+    if (!src) return;
+    const camp = (p.get("utm_campaign") || "").trim();
+    // First-touch: remember the source until the visitor registers.
+    if (!localStorage.getItem("smg_src")) {
       localStorage.setItem("smg_src", src.slice(0, 40));
-      const camp = (p.get("utm_campaign") || "").trim();
       if (camp) localStorage.setItem("smg_camp", camp.slice(0, 60));
+    }
+    // Count the anonymous landing visit ONCE per browser session (measures total
+    // traffic per channel — including visitors who never register).
+    if (!sessionStorage.getItem("smg_visit_sent")) {
+      sessionStorage.setItem("smg_visit_sent", "1");
+      fetch("/api/track-visit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: src.slice(0, 40), campaign: camp.slice(0, 60), path: location.pathname }),
+        keepalive: true,
+      }).catch(() => {});
     }
   } catch (e) {}
 })();

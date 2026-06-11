@@ -518,7 +518,10 @@ async function loadStats() {
       { label: "📱 אפליקציה פעילה 7י׳", v: s.installs_app_active_7d || 0, cls: "" },
       { label: "🌐 מכשירים ייחודיים", v: s.installs || 0,           cls: "" },
       { label: "🔔 מנויי פוש פעילים", v: s.push_enabled || 0,       cls: "" },
-      { label: "📘 נרשמו מפייסבוק", v: s.signups_facebook || 0,    cls: (s.signups_facebook > 0) ? "ok" : "" },
+      { label: "📘 כניסות מפייסבוק", v: s.visits_facebook || 0,     cls: (s.visits_facebook > 0) ? "ok" : "",
+        sub: "תנועה כוללת (כולל לא רשומות)" },
+      { label: "📘 נרשמו מפייסבוק", v: s.signups_facebook || 0,    cls: (s.signups_facebook > 0) ? "ok" : "",
+        sub: s.visits_facebook ? Math.round((s.signups_facebook / s.visits_facebook) * 100) + "% המרה" : "" },
     ];
     document.getElementById("stats").innerHTML = items.map(i =>
       `<div class="stat ${i.cls}"><div class="stat-label">${i.label}</div><div class="stat-value">${i.v.toLocaleString("he-IL")}</div>${i.sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${i.sub}</div>` : ""}</div>`
