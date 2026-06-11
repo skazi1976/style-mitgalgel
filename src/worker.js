@@ -187,6 +187,12 @@ function cleanSource(s) {
   const v = s.trim().toLowerCase().slice(0, 40).replace(/[^a-z0-9_\-.]/g, "");
   return v || null;
 }
+// Sanitize a utm_campaign value (which ad). Slightly looser than source.
+function cleanCampaign(s) {
+  if (typeof s !== "string") return null;
+  const v = s.trim().slice(0, 60).replace(/[^a-zA-Z0-9_\-. ]/g, "");
+  return v || null;
+}
 
 // Logs an anonymous landing visit that carried a utm_source (e.g. a Facebook
 // ad click), so the admin can measure total traffic per channel — including
@@ -206,8 +212,9 @@ async function trackVisit(req, env) {
 }
 
 async function verifyOtp(req, env) {
-  const { phone: rawPhone, code, name, source } = await req.json().catch(() => ({}));
+  const { phone: rawPhone, code, name, source, campaign } = await req.json().catch(() => ({}));
   const signupSource = cleanSource(source);
+  const signupCampaign = cleanCampaign(campaign);
   const phone = normalizePhone(rawPhone);
   if (!phone || !code) return err("חסרים פרטים");
 
@@ -268,8 +275,8 @@ async function verifyOtp(req, env) {
     if (!name || name.trim().length < 2) return err("נדרש שם להרשמה ראשונה");
     const ts = now();
     const result = await env.DB.prepare(
-      "INSERT INTO users (phone, name, created_at, last_active, signup_source) VALUES (?, ?, ?, ?, ?)"
-    ).bind(phone, name.trim(), ts, ts, signupSource).run();
+      "INSERT INTO users (phone, name, created_at, last_active, signup_source, signup_campaign) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(phone, name.trim(), ts, ts, signupSource, signupCampaign).run();
     user = { id: result.meta.last_row_id, name: name.trim() };
   } else {
     await env.DB.prepare("UPDATE users SET last_active = ? WHERE id = ?")
@@ -295,9 +302,10 @@ async function verifyOtp(req, env) {
 // stable placeholder phone of "google:<localId>" (won't collide with real
 // numeric phones). Returning users are matched by email first, phone second.
 async function firebaseLogin(req, env) {
-  const { idToken, name: bodyName, source } = await req.json().catch(() => ({}));
+  const { idToken, name: bodyName, source, campaign } = await req.json().catch(() => ({}));
   if (!idToken) return err("חסר טוקן");
   const signupSource = cleanSource(source);
+  const signupCampaign = cleanCampaign(campaign);
 
   const apiKey = env.FIREBASE_API_KEY || "AIzaSyChT4d_9aS3hJx6hoyqzta2uIL0Bwc5PhI";
   const lookupRes = await fetch(
@@ -352,9 +360,9 @@ async function firebaseLogin(req, env) {
     }
     const ts = now();
     const result = await env.DB.prepare(
-      `INSERT INTO users (phone, email, name, created_at, last_active, signup_source)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).bind(phone, email || null, finalName, ts, ts, signupSource).run();
+      `INSERT INTO users (phone, email, name, created_at, last_active, signup_source, signup_campaign)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(phone, email || null, finalName, ts, ts, signupSource, signupCampaign).run();
     user = { id: result.meta.last_row_id, name: finalName };
   } else {
     await env.DB.prepare(
@@ -990,6 +998,23 @@ async function adminStats(env) {
     q("SELECT COUNT(*) c FROM users WHERE signup_source='facebook'"),
     q("SELECT COUNT(*) c FROM visits WHERE source='facebook'").catch(() => ({ c: 0 })),
   ]);
+
+  // Per-campaign (per-ad) breakdown for Facebook: visits + signups merged by campaign.
+  let fbCampaigns = [];
+  try {
+    const [vRows, sRows] = await Promise.all([
+      env.DB.prepare("SELECT campaign, COUNT(*) c FROM visits WHERE source='facebook' GROUP BY campaign").all(),
+      env.DB.prepare("SELECT signup_campaign campaign, COUNT(*) c FROM users WHERE signup_source='facebook' GROUP BY signup_campaign").all(),
+    ]);
+    const map = new Map();
+    for (const r of (vRows.results || [])) map.set(r.campaign || "—", { campaign: r.campaign || "—", visits: r.c, signups: 0 });
+    for (const r of (sRows.results || [])) {
+      const k = r.campaign || "—";
+      const e = map.get(k) || { campaign: k, visits: 0, signups: 0 };
+      e.signups = r.c; map.set(k, e);
+    }
+    fbCampaigns = [...map.values()].sort((a, b) => b.visits - a.visits);
+  } catch (e) {}
   return json({
     users: u.c, items: items.c, active: act.c, sold: sold.c, hidden: hid.c,
     reports_open: rep.c, views: views.c, favorites: favs.c,
@@ -1000,6 +1025,7 @@ async function adminStats(env) {
     push_enabled: push.c,
     signups_facebook: fbSignups.c,
     visits_facebook: (fbVisits && fbVisits.c) || 0,
+    fb_campaigns: fbCampaigns,
   });
 }
 

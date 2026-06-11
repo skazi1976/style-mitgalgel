@@ -33,6 +33,10 @@ const API = ""; // same origin (worker serves static + API)
 function smgSource() {
   try { return localStorage.getItem("smg_src") || undefined; } catch (e) { return undefined; }
 }
+// Returns the stored campaign (which ad) — sent with registration calls.
+function smgCampaign() {
+  try { return localStorage.getItem("smg_camp") || undefined; } catch (e) { return undefined; }
+}
 
 // ---------- Facebook Pixel ----------
 // Loads the pixel + fires PageView on every page. Used to measure Facebook ad
@@ -133,7 +137,7 @@ async function api(path, opts = {}) {
     const res = await fetch("/api/auth/firebase-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken, source: smgSource() }),
+      body: JSON.stringify({ idToken, source: smgSource(), campaign: smgCampaign() }),
     });
     const data = await res.json();
     if (res.ok && data.ok) {
@@ -397,7 +401,7 @@ function showLoginModal(onSuccess) {
       try {
         const res = await api("/api/auth/verify-otp", {
           method: "POST",
-          body: { phone: pendingPhone, code, name: name || undefined, source: smgSource() },
+          body: { phone: pendingPhone, code, name: name || undefined, source: smgSource(), campaign: smgCampaign() },
         });
         Auth.set(res.token, res.user);
         if (res.isNew) { localStorage.setItem("smg_welcome_push", "1"); fbTrackSignup(); }

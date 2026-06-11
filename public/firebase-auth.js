@@ -118,7 +118,7 @@ async function verifyFirebaseOtp(code) {
 async function firebaseLogin(idToken, name) {
   const body = { idToken };
   if (name) body.name = name;
-  try { const s = localStorage.getItem("smg_src"); if (s) body.source = s; } catch (e) {}
+  try { const s = localStorage.getItem("smg_src"); if (s) body.source = s; const c = localStorage.getItem("smg_camp"); if (c) body.campaign = c; } catch (e) {}
   const res = await fetch("/api/auth/firebase-login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

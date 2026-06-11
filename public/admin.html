@@ -115,6 +115,7 @@
     <!-- Stats -->
     <div id="healthBanner" style="display:none;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px;font-weight:600"></div>
     <div class="stats" id="stats"></div>
+    <div id="fbCampaigns"></div>
 
     <!-- Tabs -->
     <div class="tabs">
@@ -527,7 +528,32 @@ async function loadStats() {
       `<div class="stat ${i.cls}"><div class="stat-label">${i.label}</div><div class="stat-value">${i.v.toLocaleString("he-IL")}</div>${i.sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${i.sub}</div>` : ""}</div>`
     ).join("");
     document.getElementById("reportBadge").innerHTML = s.reports_open > 0 ? `<span style="background:#e74c3c;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:4px">${s.reports_open}</span>` : "";
+    renderFbCampaigns(s.fb_campaigns || []);
   } catch (e) { toast(e.message); }
+}
+
+// Per-ad (campaign) breakdown for Facebook traffic: visits → signups → conversion.
+function renderFbCampaigns(rows) {
+  const el = document.getElementById("fbCampaigns");
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = ""; return; }
+  const label = (c) => c === "fb_sell" ? "📘 מודעת הצטרפות/מכירה" : c === "fb_buy" ? "📘 מודעת צפייה בפריטים" : ("📘 " + (c || "ללא קמפיין"));
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:14px 16px;margin:0 0 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)">
+      <div style="font-weight:700;margin-bottom:10px">📊 פילוח לפי מודעה (פייסבוק)</div>
+      <div style="overflow-x:auto"><table style="width:100%;font-size:14px">
+        <thead><tr style="text-align:right;color:var(--muted)">
+          <th style="padding:4px 6px">מודעה / קמפיין</th><th style="padding:4px 6px">כניסות</th><th style="padding:4px 6px">נרשמו</th><th style="padding:4px 6px">המרה</th>
+        </tr></thead>
+        <tbody>${rows.map(r => `
+          <tr style="border-top:1px solid #eee">
+            <td style="padding:6px">${label(r.campaign)}</td>
+            <td style="padding:6px;font-weight:600">${(r.visits || 0).toLocaleString("he-IL")}</td>
+            <td style="padding:6px;font-weight:600">${(r.signups || 0).toLocaleString("he-IL")}</td>
+            <td style="padding:6px">${r.visits ? Math.round((r.signups / r.visits) * 100) + "%" : "—"}</td>
+          </tr>`).join("")}</tbody>
+      </table></div>
+    </div>`;
 }
 
 // ---------- Items ----------
