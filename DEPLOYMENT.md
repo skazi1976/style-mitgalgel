@@ -11,7 +11,7 @@ End-to-end deployment notes from the 2026-04-23 session.
 | **Compute** | Cloudflare Workers | ⏳ pending `wrangler deploy` |
 | **Database** | Cloudflare D1 (SQLite) | ⏳ pending `wrangler d1 create` |
 | **Object storage** | Cloudflare R2 (bucket `style-mitgalgel-photos`) | ⏳ pending `wrangler r2 bucket create` |
-| **Auth OTP** | WhatsApp Baileys bot (972507483316) | ✅ running, needs `/send-otp` endpoint |
+| **Auth OTP** | WhatsApp Baileys bot (972504247932 — listener) | ✅ running, `/send-otp` endpoint |
 
 ## DNS migration log
 

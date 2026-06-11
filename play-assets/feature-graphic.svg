@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff8ea8"/>
+      <stop offset="50%" stop-color="#ff6b8a"/>
+      <stop offset="100%" stop-color="#e04d70"/>
+    </linearGradient>
+    <linearGradient id="phone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fff5f8"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dx="0" dy="6" result="offsetblur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="500" fill="url(#bg)"/>
+
+  <!-- Decorative circles -->
+  <circle cx="950" cy="80" r="120" fill="#ffffff" opacity="0.08"/>
+  <circle cx="100" cy="420" r="180" fill="#ffffff" opacity="0.08"/>
+  <circle cx="880" cy="450" r="60" fill="#ffffff" opacity="0.12"/>
+
+  <!-- Phone mockup on left -->
+  <g transform="translate(720, 60)" filter="url(#shadow)">
+    <rect width="220" height="380" rx="28" fill="#222"/>
+    <rect x="8" y="8" width="204" height="364" rx="22" fill="url(#phone)"/>
+    <!-- top bar -->
+    <rect x="8" y="8" width="204" height="44" rx="22" fill="#ff6b8a"/>
+    <text x="110" y="36" font-family="Heebo, Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">סטייל מתגלגל</text>
+    <!-- card 1 -->
+    <rect x="20" y="64" width="82" height="110" rx="10" fill="#ffe0e8"/>
+    <rect x="24" y="150" width="60" height="8" rx="3" fill="#ff6b8a"/>
+    <rect x="24" y="162" width="40" height="6" rx="2" fill="#aaa"/>
+    <!-- card 2 -->
+    <rect x="110" y="64" width="82" height="110" rx="10" fill="#ffd6c2"/>
+    <rect x="114" y="150" width="60" height="8" rx="3" fill="#ff6b8a"/>
+    <rect x="114" y="162" width="40" height="6" rx="2" fill="#aaa"/>
+    <!-- card 3 -->
+    <rect x="20" y="194" width="82" height="110" rx="10" fill="#d7e8ff"/>
+    <rect x="24" y="310" width="60" height="8" rx="3" fill="#ff6b8a"/>
+    <!-- card 4 -->
+    <rect x="110" y="194" width="82" height="110" rx="10" fill="#e8d7ff"/>
+    <rect x="114" y="310" width="60" height="8" rx="3" fill="#ff6b8a"/>
+  </g>
+
+  <!-- Text block on right -->
+  <g transform="translate(60, 110)">
+    <text font-family="Heebo, Arial, sans-serif" font-size="68" font-weight="800" fill="#fff" direction="rtl">
+      <tspan x="600" y="0">סטייל מתגלגל</tspan>
+    </text>
+    <text font-family="Heebo, Arial, sans-serif" font-size="28" font-weight="600" fill="#fff" opacity="0.95" direction="rtl">
+      <tspan x="600" y="54">קונות ומוכרות בגדים יד שנייה</tspan>
+      <tspan x="600" y="92">מאישה לאישה · בלי עמלות</tspan>
+    </text>
+
+    <!-- badges -->
+    <g transform="translate(280, 150)">
+      <rect x="0" y="0" width="160" height="44" rx="22" fill="#ffffff"/>
+      <text x="80" y="29" font-family="Heebo, Arial, sans-serif" font-size="17" font-weight="700" fill="#ff6b8a" text-anchor="middle">✨ חינם להעלאה</text>
+    </g>
+    <g transform="translate(455, 150)">
+      <rect x="0" y="0" width="145" height="44" rx="22" fill="#ffffff"/>
+      <text x="72" y="29" font-family="Heebo, Arial, sans-serif" font-size="17" font-weight="700" fill="#ff6b8a" text-anchor="middle">💬 WhatsApp</text>
+    </g>
+  </g>
+
+  <!-- Bottom URL -->
+  <text x="60" y="465" font-family="Heebo, Arial, sans-serif" font-size="18" font-weight="500" fill="#ffffff" opacity="0.85">rollingstyle.org</text>
+</svg>

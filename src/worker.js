@@ -75,25 +75,71 @@ async function getUser(req, env) {
   return user;
 }
 
-async function sendWhatsAppOTP(env, phone, code) {
-  // Calls the local Baileys bot to send WhatsApp message
-  // For now we just log; if WHATSAPP_BOT_URL is set we POST to it
-  const msg = `הקוד שלך לסטייל מתגלגל: *${code}*\n\nתקף ל-5 דקות. אם לא בקשת — התעלמי.`;
-  if (env.WHATSAPP_BOT_URL) {
-    try {
-      await fetch(env.WHATSAPP_BOT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-otp-secret": env.OTP_SECRET || "rolling-style-otp-2026",
-        },
-        body: JSON.stringify({ phone, message: msg }),
-      });
-    } catch (e) {
-      console.error("WA bot error:", e.message);
+// Vonage Verify v1 — managed OTP. Vonage generates the code, sends it, and we
+// validate via /verify/check/json. ~$0.05 per SUCCESSFUL verification (5x
+// cheaper than raw SMS-to-Israel which costs $0.25/message). Failed/abandoned
+// flows cost nothing.
+async function vonageVerifyStart(env, phone) {
+  if (!env.VONAGE_API_KEY || !env.VONAGE_API_SECRET) {
+    console.log(`[OTP DEV] would verify ${phone}`);
+    return { ok: true, request_id: "dev-mock", channel: "dev" };
+  }
+  const params = new URLSearchParams({
+    api_key: env.VONAGE_API_KEY,
+    api_secret: env.VONAGE_API_SECRET,
+    number: phone,
+    brand: "RollingStyl",
+    code_length: "6",
+    pin_expiry: "300", // 5 min
+    workflow_id: "6", // SMS-only (no voice fallback)
+    lg: "he-il",
+  });
+  try {
+    const r = await fetch("https://api.nexmo.com/verify/json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    const data = await r.json();
+    if (data.status === "0" && data.request_id) {
+      console.log(`[OTP] Verify started ${phone} → ${data.request_id}`);
+      return { ok: true, request_id: data.request_id, channel: "sms" };
     }
-  } else {
-    console.log(`[OTP DEV] ${phone} → ${code}`);
+    console.error(`[OTP] Verify start error: ${data.status} ${data.error_text}`);
+    return { ok: false, error: data.error_text || "Vonage verify start failed" };
+  } catch (e) {
+    console.error("[OTP] Verify fetch threw:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+async function vonageVerifyCheck(env, requestId, code) {
+  if (!env.VONAGE_API_KEY || !env.VONAGE_API_SECRET) {
+    // Dev: any 6-digit code passes
+    return { ok: /^\d{6}$/.test(code) };
+  }
+  const params = new URLSearchParams({
+    api_key: env.VONAGE_API_KEY,
+    api_secret: env.VONAGE_API_SECRET,
+    request_id: requestId,
+    code,
+  });
+  try {
+    const r = await fetch("https://api.nexmo.com/verify/check/json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    const data = await r.json();
+    if (data.status === "0") {
+      console.log(`[OTP] Verify check OK ${requestId}`);
+      return { ok: true };
+    }
+    console.error(`[OTP] Verify check failed: ${data.status} ${data.error_text}`);
+    return { ok: false, error: data.error_text || "קוד שגוי", status: data.status };
+  } catch (e) {
+    console.error("[OTP] Verify check threw:", e.message);
+    return { ok: false, error: e.message };
   }
 }
 
@@ -101,52 +147,112 @@ async function sendWhatsAppOTP(env, phone, code) {
 // Auth handlers
 // ============================================================
 
+// Demo account for Google Play reviewers + closed-testing testers (PrimeTestLab).
+// Google Sign-In + Vonage SMS often fail in closed testing, so this fixed
+// phone+code pair bypasses both — testers can always get into the app.
+const DEMO_PHONE = "972500000000"; // entered as 0500000000
+const DEMO_CODE = "123456";
+
 async function requestOtp(req, env) {
   const { phone: rawPhone } = await req.json().catch(() => ({}));
   const phone = normalizePhone(rawPhone);
   if (!phone) return err("מספר טלפון לא תקין");
 
-  const code = genCode();
-  const expires = now() + 300; // 5 min
+  // Demo account — skip Vonage entirely, no SMS sent
+  if (phone === DEMO_PHONE) {
+    return json({ ok: true, phone, expires_at: now() + 600, channel: "demo" });
+  }
 
+  // Ask Vonage Verify to send the code. Vonage owns code generation +
+  // delivery + retry; we just store the request_id so verify-otp can check.
+  const result = await vonageVerifyStart(env, phone);
+  if (!result.ok) {
+    return err(`שליחת SMS נכשלה: ${result.error || "שגיאה"}`, 502);
+  }
+
+  const expires = now() + 300;
+  // Reuse otp_codes table — `code` column holds Vonage request_id
   await env.DB.prepare(
-    `INSERT INTO otp_codes (phone, code, expires_at, attempts)
-     VALUES (?, ?, ?, 0)
-     ON CONFLICT(phone) DO UPDATE SET code = ?, expires_at = ?, attempts = 0`
-  ).bind(phone, code, expires, code, expires).run();
+    `INSERT INTO otp_codes (phone, code, expires_at, attempts, verified)
+     VALUES (?, ?, ?, 0, 0)
+     ON CONFLICT(phone) DO UPDATE SET code = ?, expires_at = ?, attempts = 0, verified = 0`
+  ).bind(phone, result.request_id, expires, result.request_id, expires).run();
 
-  await sendWhatsAppOTP(env, phone, code);
+  return json({ ok: true, phone, expires_at: expires, channel: result.channel });
+}
 
-  return json({ ok: true, phone, expires_at: expires });
+// Sanitize a client-supplied signup source (utm_source). Short, safe, nullable.
+function cleanSource(s) {
+  if (typeof s !== "string") return null;
+  const v = s.trim().toLowerCase().slice(0, 40).replace(/[^a-z0-9_\-.]/g, "");
+  return v || null;
 }
 
 async function verifyOtp(req, env) {
-  const { phone: rawPhone, code, name } = await req.json().catch(() => ({}));
+  const { phone: rawPhone, code, name, source } = await req.json().catch(() => ({}));
+  const signupSource = cleanSource(source);
   const phone = normalizePhone(rawPhone);
   if (!phone || !code) return err("חסרים פרטים");
 
+  // Demo account — fixed code, no Vonage, no SMS. For closed-testing testers.
+  if (phone === DEMO_PHONE && code.toString() === DEMO_CODE) {
+    let demoUser = await env.DB.prepare("SELECT id, name FROM users WHERE phone = ?").bind(phone).first();
+    if (!demoUser) {
+      const ts = now();
+      const r = await env.DB.prepare(
+        "INSERT INTO users (phone, name, created_at, last_active) VALUES (?, ?, ?, ?)"
+      ).bind(phone, "חשבון דמו", ts, ts).run();
+      demoUser = { id: r.meta.last_row_id, name: "חשבון דמו" };
+    } else {
+      await env.DB.prepare("UPDATE users SET last_active = ? WHERE id = ?").bind(now(), demoUser.id).run();
+    }
+    const demoToken = genToken();
+    await env.DB.prepare(
+      "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
+    ).bind(demoToken, demoUser.id, now(), now() + 30 * 86400).run();
+    return json({ ok: true, token: demoToken, user: { id: demoUser.id, name: demoUser.name, phone } });
+  }
+
+  // The "code" column now holds the Vonage Verify request_id (not the user code)
   const row = await env.DB.prepare(
-    "SELECT code, expires_at, attempts FROM otp_codes WHERE phone = ?"
+    "SELECT code, expires_at, attempts, verified FROM otp_codes WHERE phone = ?"
   ).bind(phone).first();
 
   if (!row) return err("לא נשלח קוד למספר הזה");
   if (row.attempts >= 5) return err("יותר מדי ניסיונות, בקשי קוד חדש", 429);
   if (row.expires_at < now()) return err("הקוד פג תוקף", 410);
-  if (row.code !== code.toString()) {
-    await env.DB.prepare("UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?")
-      .bind(phone).run();
-    return err("קוד שגוי");
+
+  // A Vonage Verify request_id is SINGLE-USE: once /check succeeds it's consumed,
+  // and a second /check returns "already verified" (status 6). For first-time
+  // signup we verify the code BEFORE we have the name, so we remember that the
+  // phone was verified and skip the re-check on the follow-up call (with the name).
+  if (!row.verified) {
+    const checkResult = await vonageVerifyCheck(env, row.code, code.toString());
+    if (!checkResult.ok) {
+      await env.DB.prepare("UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?")
+        .bind(phone).run();
+      // Map Vonage status codes to friendly Hebrew (never show raw English to users).
+      const st = String(checkResult.status || "");
+      let msg = "האימות נכשל, נסי שוב";
+      if (st === "16")      msg = "הקוד שגוי. בדקי שוב 🔢";
+      else if (st === "6")  msg = "הקוד פג תוקף או כבר שומש — בקשי קוד חדש 🔄";
+      else if (st === "17") msg = "יותר מדי ניסיונות — בקשי קוד חדש";
+      return err(msg);
+    }
+    // Mark verified so a follow-up call (e.g. after entering the name) won't re-check.
+    await env.DB.prepare("UPDATE otp_codes SET verified = 1 WHERE phone = ?").bind(phone).run();
   }
 
   // Code OK — find/create user
   let user = await env.DB.prepare("SELECT id, name FROM users WHERE phone = ?").bind(phone).first();
+  const isNew = !user;
 
   if (!user) {
     if (!name || name.trim().length < 2) return err("נדרש שם להרשמה ראשונה");
     const ts = now();
     const result = await env.DB.prepare(
-      "INSERT INTO users (phone, name, created_at, last_active) VALUES (?, ?, ?, ?)"
-    ).bind(phone, name.trim(), ts, ts).run();
+      "INSERT INTO users (phone, name, created_at, last_active, signup_source) VALUES (?, ?, ?, ?, ?)"
+    ).bind(phone, name.trim(), ts, ts, signupSource).run();
     user = { id: result.meta.last_row_id, name: name.trim() };
   } else {
     await env.DB.prepare("UPDATE users SET last_active = ? WHERE id = ?")
@@ -163,7 +269,94 @@ async function verifyOtp(req, env) {
   // Clean up OTP
   await env.DB.prepare("DELETE FROM otp_codes WHERE phone = ?").bind(phone).run();
 
-  return json({ ok: true, token, user: { id: user.id, name: user.name, phone } });
+  return json({ ok: true, token, isNew, user: { id: user.id, name: user.name, phone } });
+}
+
+// Verifies a Firebase ID token (Phone Auth OR Google Sign-In) and issues a
+// session. Phone Auth tokens carry phoneNumber; Google tokens carry email +
+// displayName. The schema requires phone NOT NULL, so Google users get a
+// stable placeholder phone of "google:<localId>" (won't collide with real
+// numeric phones). Returning users are matched by email first, phone second.
+async function firebaseLogin(req, env) {
+  const { idToken, name: bodyName, source } = await req.json().catch(() => ({}));
+  if (!idToken) return err("חסר טוקן");
+  const signupSource = cleanSource(source);
+
+  const apiKey = env.FIREBASE_API_KEY || "AIzaSyChT4d_9aS3hJx6hoyqzta2uIL0Bwc5PhI";
+  const lookupRes = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+  if (!lookupRes.ok) return err("אימות נכשל", 401);
+  const data = await lookupRes.json().catch(() => ({}));
+  const fbUser = data.users?.[0];
+  if (!fbUser) return err("טוקן לא תקין", 401);
+
+  const rawPhone = fbUser.phoneNumber;
+  const email = (fbUser.email || "").toLowerCase().trim();
+  const fbName = fbUser.displayName || bodyName || "";
+
+  // Determine the identity for our DB
+  let phone = null;
+  let user = null;
+
+  if (rawPhone) {
+    // Phone Auth path
+    phone = normalizePhone(rawPhone);
+    if (!phone) return err("מספר טלפון לא תקין");
+    user = await env.DB.prepare(
+      "SELECT id, name FROM users WHERE phone = ?",
+    ).bind(phone).first();
+  } else if (email) {
+    // Google path — match by email first, then create with placeholder phone
+    user = await env.DB.prepare(
+      "SELECT id, name, phone FROM users WHERE email = ?",
+    ).bind(email).first();
+    if (!user) {
+      // Stable per-Google-user placeholder; localId is a Firebase UID
+      phone = `google:${fbUser.localId}`;
+    } else {
+      phone = user.phone; // existing user, keep their stored phone
+    }
+  } else {
+    return err("טוקן ללא מספר טלפון או אימייל", 401);
+  }
+
+  const isNew = !user;
+
+  if (!user) {
+    const finalName = (fbName || bodyName || "").trim();
+    if (!finalName || finalName.length < 2) {
+      return err("נדרש שם להרשמה ראשונה");
+    }
+    const ts = now();
+    const result = await env.DB.prepare(
+      `INSERT INTO users (phone, email, name, created_at, last_active, signup_source)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(phone, email || null, finalName, ts, ts, signupSource).run();
+    user = { id: result.meta.last_row_id, name: finalName };
+  } else {
+    await env.DB.prepare(
+      "UPDATE users SET last_active = ? WHERE id = ?",
+    ).bind(now(), user.id).run();
+  }
+
+  const token = genToken();
+  const expires = now() + 30 * 86400;
+  await env.DB.prepare(
+    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+  ).bind(token, user.id, now(), expires).run();
+
+  return json({
+    ok: true,
+    token,
+    isNew,
+    user: { id: user.id, name: user.name, phone, email: email || null },
+  });
 }
 
 async function logout(req, env) {
@@ -175,7 +368,7 @@ async function logout(req, env) {
 
 async function me(req, env) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
   return json({ user });
 }
 
@@ -245,9 +438,31 @@ async function viewItem(req, env, id) {
   return json({ ok: true });
 }
 
+// Records a WhatsApp "contact seller" click for an item — so sellers/admin can see
+// which listings actually drive contacts (not just views). Auth is optional.
+async function contactItem(req, env, id) {
+  const body = await req.json().catch(() => ({}));
+  const user = await getUser(req, env);
+  await env.DB.prepare("UPDATE items SET whatsapp_contacts = whatsapp_contacts + 1 WHERE id = ?").bind(id).run();
+  await env.DB.prepare(
+    "INSERT INTO contact_events (item_id, user_id, device_id, created_at) VALUES (?, ?, ?, ?)"
+  ).bind(id, user?.id || null, body.device_id || null, now()).run();
+  return json({ ok: true });
+}
+
+const MAX_ACTIVE_ITEMS_PER_USER = 5;
+
 async function createItem(req, env) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
+
+  // Limit: max 5 active items per user
+  const { c: activeCount } = await env.DB.prepare(
+    "SELECT COUNT(*) c FROM items WHERE user_id = ? AND status = 'active'"
+  ).bind(user.id).first();
+  if (activeCount >= MAX_ACTIVE_ITEMS_PER_USER) {
+    return err(`הגעת למגבלה — מותר עד ${MAX_ACTIVE_ITEMS_PER_USER} פריטים פעילים. סמני פריט כ"נמכר" או הסתירי כדי להעלות פריט חדש.`, 403);
+  }
 
   const form = await req.formData();
   const title = form.get("title")?.toString().trim();
@@ -263,6 +478,7 @@ async function createItem(req, env) {
   if (!price || price < 1 || price > 999999) return err("מחיר לא תקין");
   if (!category) return err("חסרה קטגוריה");
   if (!condition) return err("חסר מצב הפריט");
+  if (!city) return err("חסר אזור");
 
   // Upload photos to R2
   const photos = form.getAll("photos").filter(f => f instanceof File);
@@ -302,7 +518,7 @@ async function createItem(req, env) {
 
 async function patchItem(req, env, id) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
 
   const item = await env.DB.prepare("SELECT user_id FROM items WHERE id = ?").bind(id).first();
   if (!item) return err("פריט לא נמצא", 404);
@@ -332,7 +548,7 @@ async function patchItem(req, env, id) {
 
 async function deleteItem(req, env, id) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
   const item = await env.DB.prepare("SELECT user_id, photos FROM items WHERE id = ?").bind(id).first();
   if (!item) return err("פריט לא נמצא", 404);
   if (item.user_id !== user.id) return err("אין הרשאה", 403);
@@ -354,7 +570,7 @@ async function deleteItem(req, env, id) {
 
 async function toggleFavorite(req, env, itemId) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
 
   const existing = await env.DB.prepare(
     "SELECT 1 FROM favorites WHERE user_id = ? AND item_id = ?"
@@ -377,7 +593,7 @@ async function toggleFavorite(req, env, itemId) {
 
 async function myFavorites(req, env) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
   const { results } = await env.DB.prepare(`
     SELECT i.id, i.title, i.price, i.photos, i.status, i.brand, i.size
     FROM favorites f
@@ -391,9 +607,9 @@ async function myFavorites(req, env) {
 
 async function myItems(req, env) {
   const user = await getUser(req, env);
-  if (!user) return err("לא מחוברת", 401);
+  if (!user) return err("פג תוקף ההתחברות, התחברי שוב", 401);
   const { results } = await env.DB.prepare(`
-    SELECT id, title, price, photos, status, views, favorites_count, created_at
+    SELECT id, title, price, photos, status, views, favorites_count, whatsapp_contacts, created_at
     FROM items WHERE user_id = ? ORDER BY created_at DESC
   `).bind(user.id).all();
   const items = results.map(r => ({ ...r, photos: JSON.parse(r.photos || "[]") }));
@@ -477,11 +693,13 @@ async function vapidJWT(env, audience) {
   const toSign = _utf8(h + "." + p);
 
   const pubRaw = b64urlDecode(env.VAPID_PUBLIC_KEY);
+  const pk = (env.VAPID_PRIVATE_KEY || "").trim();
+  console.log("vapid d length", pk.length, "public length", (env.VAPID_PUBLIC_KEY || "").length);
   const jwk = {
     kty: "EC", crv: "P-256",
     x: b64urlEncode(pubRaw.slice(1, 33)),
     y: b64urlEncode(pubRaw.slice(33, 65)),
-    d: env.VAPID_PRIVATE_KEY,
+    d: pk,
     ext: true,
   };
   const key = await crypto.subtle.importKey(
@@ -537,6 +755,9 @@ async function sendWebPush(env, sub, payloadStr) {
     method: "POST",
     headers: {
       "TTL": "86400",
+      // High urgency → FCM delivers promptly even when the device is in Doze /
+      // aggressive battery-saver (e.g. Samsung), instead of batching the message.
+      "Urgency": "high",
       "Content-Encoding": "aes128gcm",
       "Content-Type": "application/octet-stream",
       "Content-Length": String(body.byteLength),
@@ -547,10 +768,14 @@ async function sendWebPush(env, sub, payloadStr) {
   return res;
 }
 
-async function deliverPush(env, subscriptions, payloadObj) {
-  const payloadStr = JSON.stringify(payloadObj);
+async function deliverPush(env, subscriptions, payloadObj, campaignId) {
   const results = await Promise.all(subscriptions.map(async (s) => {
     try {
+      // Per-recipient payload: bake in userId so we know who clicked
+      const perPayload = { ...payloadObj };
+      if (campaignId) perPayload.campaignId = campaignId;
+      if (s.user_id != null) perPayload.userId = s.user_id;
+      const payloadStr = JSON.stringify(perPayload);
       const r = await sendWebPush(env, s, payloadStr);
       if (r.status === 404 || r.status === 410) {
         // Gone — remove subscription
@@ -562,10 +787,13 @@ async function deliverPush(env, subscriptions, payloadObj) {
           .bind(now(), s.endpoint).run();
         return { ok: true, status: r.status };
       }
+      const bodyText = await r.text().catch(() => "");
+      console.log("push non-ok", r.status, bodyText.slice(0, 200), s.endpoint.slice(0, 60));
       await env.DB.prepare("UPDATE push_subscriptions SET failures = failures + 1 WHERE endpoint = ?")
         .bind(s.endpoint).run();
-      return { ok: false, status: r.status };
+      return { ok: false, status: r.status, body: bodyText.slice(0, 200) };
     } catch (e) {
+      console.log("push exception", e.message, s.endpoint.slice(0, 60));
       return { ok: false, error: e.message };
     }
   }));
@@ -574,6 +802,7 @@ async function deliverPush(env, subscriptions, payloadObj) {
     sent: results.filter(r => r.ok).length,
     gone: results.filter(r => r.gone).length,
     failed: results.filter(r => !r.ok && !r.gone).length,
+    errors: results.filter(r => !r.ok).map(r => ({ status: r.status, error: r.error, body: r.body })).slice(0, 3),
   };
 }
 
@@ -613,10 +842,23 @@ async function pushUnsubscribe(req, env) {
   return json({ ok: true });
 }
 
+async function recordPushClick(req, env) {
+  const body = await req.json().catch(() => ({}));
+  const { campaignId, userId, url } = body || {};
+  if (!campaignId) return err("missing campaignId");
+  const ua = (req.headers.get("User-Agent") || "").slice(0, 500);
+  const uid = (userId === null || userId === undefined) ? null : Number(userId);
+  await env.DB.prepare(
+    `INSERT INTO push_clicks (campaign_id, user_id, url, user_agent, clicked_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(campaignId, Number.isFinite(uid) ? uid : null, url || null, ua, now()).run();
+  return json({ ok: true });
+}
+
 async function sendPushForNewItem(env, item) {
   // Fetch subscriptions interested in this item's category (or unspecified = all)
   const { results } = await env.DB.prepare(
-    `SELECT endpoint, p256dh, auth, categories
+    `SELECT endpoint, p256dh, auth, categories, user_id
      FROM push_subscriptions
      WHERE user_id IS NULL OR user_id != ?`
   ).bind(item.user_id).all();
@@ -629,6 +871,7 @@ async function sendPushForNewItem(env, item) {
   if (!targets.length) return { sent: 0 };
 
   const preview = (item.photos && JSON.parse(item.photos)[0]) || undefined;
+  const campaignId = `item-${item.id}-${now()}`;
   const payload = {
     title: "פריט חדש בסטייל מתגלגל 💃",
     body:  `${item.title} — ₪${item.price}`,
@@ -638,7 +881,51 @@ async function sendPushForNewItem(env, item) {
     image: preview,
     tag:   `item-${item.id}`,
   };
-  return await deliverPush(env, targets, payload);
+
+  await env.DB.prepare(
+    `INSERT INTO push_campaigns (campaign_id, kind, title, body, url, category, total_count, created_at)
+     VALUES (?, 'new_item', ?, ?, ?, ?, ?, ?)`
+  ).bind(campaignId, payload.title, payload.body, payload.url, item.category || null, targets.length, now()).run();
+
+  const stats = await deliverPush(env, targets, payload, campaignId);
+
+  await env.DB.prepare(
+    `UPDATE push_campaigns SET sent_count = ?, failed_count = ? WHERE campaign_id = ?`
+  ).bind(stats.sent, stats.failed, campaignId).run();
+
+  return stats;
+}
+
+// ============================================================
+// Install tracking
+// ============================================================
+
+async function trackInstall(req, env) {
+  const body = await req.json().catch(() => ({}));
+  const deviceId = (body.device_id || "").slice(0, 64);
+  if (!deviceId) return err("missing device_id");
+  const ua = (req.headers.get("User-Agent") || "").slice(0, 500);
+  const platform = /iPad|iPhone|iPod/.test(ua) ? "ios"
+                  : /Android/.test(ua) ? "android"
+                  : /Windows|Macintosh|Linux/.test(ua) ? "desktop"
+                  : "other";
+  const user = await getUser(req, env);
+  const userId = user?.id || null;
+  const isApp = body.is_app ? 1 : 0;
+  const pushOn = body.push_on ? 1 : 0;
+  const t = now();
+
+  await env.DB.prepare(
+    `INSERT INTO installs (device_id, user_id, user_agent, platform, created_at, last_seen, is_app, push_on)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(device_id) DO UPDATE SET
+       last_seen = excluded.last_seen,
+       user_id = COALESCE(installs.user_id, excluded.user_id),
+       is_app = MAX(installs.is_app, excluded.is_app),
+       push_on = excluded.push_on`
+  ).bind(deviceId, userId, ua, platform, t, t, isApp, pushOn).run();
+
+  return json({ ok: true });
 }
 
 // ============================================================
@@ -665,7 +952,8 @@ async function adminLogin(req, env) {
 
 async function adminStats(env) {
   const q = (sql) => env.DB.prepare(sql).first();
-  const [u, items, act, sold, hid, rep, views, favs] = await Promise.all([
+  const sevenDaysAgo = now() - 7 * 86400;
+  const [u, items, act, sold, hid, rep, views, favs, inst, instIos, instAndroid, instActive, push, instApp, instAppActive, instAppPush, fbSignups] = await Promise.all([
     q("SELECT COUNT(*) c FROM users"),
     q("SELECT COUNT(*) c FROM items"),
     q("SELECT COUNT(*) c FROM items WHERE status='active'"),
@@ -674,17 +962,44 @@ async function adminStats(env) {
     q("SELECT COUNT(*) c FROM reports WHERE resolved=0"),
     q("SELECT COALESCE(SUM(views),0) c FROM items"),
     q("SELECT COUNT(*) c FROM favorites"),
+    q("SELECT COUNT(*) c FROM installs"),
+    q("SELECT COUNT(*) c FROM installs WHERE platform='ios'"),
+    q("SELECT COUNT(*) c FROM installs WHERE platform='android'"),
+    env.DB.prepare("SELECT COUNT(*) c FROM installs WHERE last_seen > ?").bind(sevenDaysAgo).first(),
+    q("SELECT COUNT(*) c FROM push_subscriptions WHERE failures < 3"),
+    q("SELECT COUNT(*) c FROM installs WHERE is_app=1"),
+    env.DB.prepare("SELECT COUNT(*) c FROM installs WHERE is_app=1 AND last_seen > ?").bind(sevenDaysAgo).first(),
+    q("SELECT COUNT(*) c FROM installs WHERE is_app=1 AND push_on=1"),
+    q("SELECT COUNT(*) c FROM users WHERE signup_source='facebook'"),
   ]);
   return json({
     users: u.c, items: items.c, active: act.c, sold: sold.c, hidden: hid.c,
     reports_open: rep.c, views: views.c, favorites: favs.c,
+    installs: inst.c, installs_ios: instIos.c, installs_android: instAndroid.c,
+    installs_active_7d: instActive.c,
+    installs_app: instApp.c, installs_app_active_7d: instAppActive.c,
+    installs_app_push: instAppPush.c,
+    push_enabled: push.c,
+    signups_facebook: fbSignups.c,
   });
+}
+
+async function adminInstalls(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT i.id, i.device_id, i.platform, i.user_agent, i.created_at, i.last_seen,
+            i.is_app, i.push_on, i.user_id, u.name AS user_name, u.phone AS user_phone
+     FROM installs i
+     LEFT JOIN users u ON u.id = i.user_id
+     ORDER BY i.last_seen DESC
+     LIMIT 500`
+  ).all();
+  return json({ installs: results });
 }
 
 async function adminUsers(env) {
   const { results } = await env.DB.prepare(
     `SELECT id, phone, name, city, created_at, last_active,
-            items_listed, items_sold, rating, banned
+            items_listed, items_sold, rating, banned, signup_source
      FROM users ORDER BY created_at DESC LIMIT 500`
   ).all();
   return json({ users: results });
@@ -712,7 +1027,7 @@ async function adminItems(env, url) {
   const bind  = status ? [status] : [];
   const { results } = await env.DB.prepare(
     `SELECT i.id, i.title, i.price, i.category, i.condition, i.status,
-            i.photos, i.views, i.favorites_count, i.created_at,
+            i.photos, i.views, i.favorites_count, i.whatsapp_contacts, i.created_at,
             u.id AS user_id, u.name AS seller_name, u.phone AS seller_phone
      FROM items i LEFT JOIN users u ON u.id = i.user_id
      ${where}
@@ -720,6 +1035,42 @@ async function adminItems(env, url) {
   ).bind(...bind).all();
   return json({
     items: results.map((r) => ({ ...r, photos: JSON.parse(r.photos || "[]") })),
+  });
+}
+
+// Ranking of listings by WhatsApp "contact seller" clicks. ?days=N filters by the
+// contact_events log (date-bounded); no days param = all-time from the item counter.
+async function adminContactStats(env, url) {
+  const days = parseInt(url.searchParams.get("days") || "0");
+  let rows;
+  if (days > 0) {
+    const since = now() - days * 86400;
+    rows = (await env.DB.prepare(
+      `SELECT ce.item_id AS id, COUNT(*) AS contacts, i.title, i.price, i.status,
+              i.photos, u.name AS seller_name
+       FROM contact_events ce
+       JOIN items i ON i.id = ce.item_id
+       LEFT JOIN users u ON u.id = i.user_id
+       WHERE ce.created_at > ?
+       GROUP BY ce.item_id ORDER BY contacts DESC LIMIT 50`
+    ).bind(since).all()).results;
+  } else {
+    rows = (await env.DB.prepare(
+      `SELECT i.id, i.whatsapp_contacts AS contacts, i.title, i.price, i.status,
+              i.photos, i.views, u.name AS seller_name
+       FROM items i LEFT JOIN users u ON u.id = i.user_id
+       WHERE i.whatsapp_contacts > 0
+       ORDER BY i.whatsapp_contacts DESC LIMIT 50`
+    ).all()).results;
+  }
+  const totalRow = await env.DB.prepare(
+    days > 0
+      ? `SELECT COUNT(*) AS total FROM contact_events WHERE created_at > ${now() - days * 86400}`
+      : `SELECT COALESCE(SUM(whatsapp_contacts),0) AS total FROM items`
+  ).first();
+  return json({
+    total: totalRow?.total || 0,
+    items: rows.map((r) => ({ ...r, photos: JSON.parse(r.photos || "[]") })),
   });
 }
 
@@ -762,13 +1113,82 @@ async function adminResolveReport(env, id) {
   return json({ ok: true });
 }
 
+async function adminPushCampaigns(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.campaign_id, c.kind, c.title, c.body, c.url, c.category,
+            c.total_count, c.sent_count, c.failed_count, c.created_at,
+            (SELECT COUNT(*) FROM push_clicks pc WHERE pc.campaign_id = c.campaign_id) AS click_count,
+            (SELECT COUNT(DISTINCT pc.user_id) FROM push_clicks pc
+              WHERE pc.campaign_id = c.campaign_id AND pc.user_id IS NOT NULL) AS unique_users
+     FROM push_campaigns c
+     ORDER BY c.created_at DESC
+     LIMIT 200`
+  ).all();
+  return json({ campaigns: results });
+}
+
+async function adminPushClicks(env, url) {
+  const campaignId = url.searchParams.get("campaign_id");
+  let sql = `SELECT pc.id, pc.campaign_id, pc.user_id, pc.url, pc.user_agent, pc.clicked_at,
+                    u.name AS user_name, u.phone AS user_phone, u.city AS user_city,
+                    c.title AS campaign_title
+             FROM push_clicks pc
+             LEFT JOIN users u ON u.id = pc.user_id
+             LEFT JOIN push_campaigns c ON c.campaign_id = pc.campaign_id`;
+  const binds = [];
+  if (campaignId) { sql += " WHERE pc.campaign_id = ?"; binds.push(campaignId); }
+  sql += " ORDER BY pc.clicked_at DESC LIMIT 500";
+  const { results } = await env.DB.prepare(sql).bind(...binds).all();
+  return json({ clicks: results });
+}
+
+async function adminPushSubscribers(env, url) {
+  const limit  = Math.min(1000, parseInt(url.searchParams.get("limit") || "500"));
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const { results } = await env.DB.prepare(
+    `SELECT ps.id, ps.user_id, ps.endpoint, ps.categories, ps.created_at, ps.last_used, ps.failures,
+            u.name AS user_name, u.phone AS user_phone, u.city AS user_city,
+            CASE
+              WHEN ps.endpoint LIKE 'https://fcm.googleapis.com/%' THEN 'android/chrome'
+              WHEN ps.endpoint LIKE 'https://web.push.apple.com/%' THEN 'ios/safari'
+              WHEN ps.endpoint LIKE 'https://updates.push.services.mozilla.com/%' THEN 'firefox'
+              WHEN ps.endpoint LIKE 'https://wns2-%.notify.windows.com/%' THEN 'windows/edge'
+              ELSE 'other'
+            END AS provider
+     FROM push_subscriptions ps
+     LEFT JOIN users u ON u.id = ps.user_id
+     ORDER BY ps.last_used DESC
+     LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+  const total       = (await env.DB.prepare("SELECT COUNT(*) c FROM push_subscriptions").first()).c;
+  const active      = (await env.DB.prepare("SELECT COUNT(*) c FROM push_subscriptions WHERE failures < 3").first()).c;
+  const withUser    = (await env.DB.prepare("SELECT COUNT(*) c FROM push_subscriptions WHERE user_id IS NOT NULL").first()).c;
+  return json({ subscribers: results || [], total, active, with_user: withUser, anonymous: total - withUser });
+}
+
 async function adminPushBroadcast(req, env) {
   const body = await req.json().catch(() => ({}));
-  const { title, message, url, category } = body;
+  const { title, message, url, category, phone } = body;
   if (!title || !message) return err("title and message required");
 
-  let sql = "SELECT endpoint, p256dh, auth, categories FROM push_subscriptions";
-  const { results } = await env.DB.prepare(sql).all();
+  let sql = "SELECT endpoint, p256dh, auth, categories, user_id FROM push_subscriptions";
+  const binds = [];
+  if (phone) {
+    // Generate all reasonable variants for Israeli numbers
+    let digits = String(phone).replace(/\D/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);     // 00972... -> 972...
+    if (digits.startsWith("0")) digits = "972" + digits.slice(1); // 050... -> 97250...
+    if (!digits.startsWith("972") && digits.length === 9) digits = "972" + digits; // 50... -> 97250...
+    const variants = Array.from(new Set([
+      digits,                  // 972506818716
+      "+" + digits,            // +972506818716
+      "0" + digits.slice(3),   // 0506818716 (if israeli)
+    ]));
+    sql += ` WHERE user_id IN (SELECT id FROM users WHERE phone IN (${variants.map(() => "?").join(",")}))`;
+    binds.push(...variants);
+  }
+  const { results } = await env.DB.prepare(sql).bind(...binds).all();
+  if (phone && !results.length) return err("לא נמצאו מנויי פוש למספר הזה", 404);
 
   const targets = category
     ? results.filter((s) => {
@@ -777,16 +1197,130 @@ async function adminPushBroadcast(req, env) {
       })
     : results;
 
+  const campaignId = "broadcast-" + now();
   const payload = {
     title,
     body: message,
     url: url || "/",
     icon: "/icon-192.png",
     badge: "/icon-192.png",
-    tag: "broadcast-" + now(),
+    tag: campaignId,
   };
-  const stats = await deliverPush(env, targets, payload);
-  return json({ ok: true, ...stats });
+
+  await env.DB.prepare(
+    `INSERT INTO push_campaigns (campaign_id, kind, title, body, url, category, total_count, created_at)
+     VALUES (?, 'broadcast', ?, ?, ?, ?, ?, ?)`
+  ).bind(campaignId, title, message, url || "/", category || null, targets.length, now()).run();
+
+  const stats = await deliverPush(env, targets, payload, campaignId);
+
+  await env.DB.prepare(
+    `UPDATE push_campaigns SET sent_count = ?, failed_count = ? WHERE campaign_id = ?`
+  ).bind(stats.sent, stats.failed, campaignId).run();
+
+  return json({ ok: true, campaign_id: campaignId, ...stats });
+}
+
+// ============================================================
+// Waitlist (Coming Soon page)
+// ============================================================
+
+// ============================================================
+// Health check — verifies critical wiring is alive
+// ============================================================
+async function healthCheck(env) {
+  const checks = {};
+  const start = Date.now();
+
+  // DB read
+  try {
+    const r = await env.DB.prepare("SELECT 1 AS ok").first();
+    checks.db = { ok: r?.ok === 1 };
+  } catch (e) { checks.db = { ok: false, error: e.message }; }
+
+  // Critical tables exist (no rows-required, just probing)
+  for (const tbl of ["users", "items", "installs", "waitlist", "push_campaigns", "push_clicks", "favorites", "reports", "sessions"]) {
+    try {
+      const r = await env.DB.prepare(`SELECT COUNT(*) c FROM ${tbl}`).first();
+      checks[`tbl_${tbl}`] = { ok: true, count: r.c };
+    } catch (e) {
+      checks[`tbl_${tbl}`] = { ok: false, error: e.message };
+    }
+  }
+
+  // R2 bucket binding
+  checks.r2 = { ok: !!env.PHOTOS };
+
+  // Critical secrets present
+  checks.admin_password = { ok: !!env.ADMIN_PASSWORD };
+  checks.vapid_public  = { ok: !!env.VAPID_PUBLIC_KEY };
+  checks.vapid_private = { ok: !!env.VAPID_PRIVATE_KEY };
+
+  // Recent activity flags (warn if zero in last 7 days)
+  try {
+    const sevenDaysAgo = now() - 7 * 86400;
+    const recentInstalls = await env.DB.prepare("SELECT COUNT(*) c FROM installs WHERE last_seen > ?").bind(sevenDaysAgo).first();
+    checks.installs_active_7d = { ok: recentInstalls.c > 0, count: recentInstalls.c };
+    const recentItems = await env.DB.prepare("SELECT COUNT(*) c FROM items WHERE created_at > ?").bind(sevenDaysAgo).first();
+    checks.items_new_7d = { ok: true, count: recentItems.c }; // informational
+  } catch (e) { checks.recent = { ok: false, error: e.message }; }
+
+  const allOk = Object.values(checks).every(c => c.ok);
+  return json({
+    ok: allOk,
+    checks,
+    duration_ms: Date.now() - start,
+    deployed_at: new Date().toISOString(),
+  }, allOk ? 200 : 503);
+}
+
+async function waitlistJoin(req, env) {
+  const body = await req.json().catch(() => ({}));
+  const phone = normalizePhone(body.phone);
+  const email = (body.email || "").trim().toLowerCase() || null;
+  const name  = (body.name  || "").trim() || null;
+  const city  = (body.city  || "").trim() || null;
+  const source = (body.source || "direct").trim().slice(0, 50);
+
+  if (!phone && !email) return err("נדרש טלפון או אימייל", 400);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err("אימייל לא תקין", 400);
+  if (phone && phone.replace(/\D/g, "").length < 10) return err("מספר טלפון לא תקין", 400);
+
+  const ip = req.headers.get("CF-Connecting-IP") || req.headers.get("X-Forwarded-For") || "";
+  const ua = (req.headers.get("User-Agent") || "").slice(0, 300);
+
+  // Check duplicates first (so we can return friendly message)
+  if (phone) {
+    const existing = await env.DB.prepare("SELECT id FROM waitlist WHERE phone = ?").bind(phone).first();
+    if (existing) return json({ ok: true, already: true });
+  }
+  if (email) {
+    const existing = await env.DB.prepare("SELECT id FROM waitlist WHERE email = ?").bind(email).first();
+    if (existing) return json({ ok: true, already: true });
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO waitlist (phone, email, name, city, source, user_agent, ip, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(phone, email, name, city, source, ua, ip, Date.now()).run();
+
+  return json({ ok: true });
+}
+
+async function waitlistCount(env) {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist").first();
+  return json({ count: (row && row.c) || 0 });
+}
+
+async function adminWaitlist(env, url) {
+  const limit  = Math.min(500, parseInt(url.searchParams.get("limit") || "100"));
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const { results } = await env.DB.prepare(
+    `SELECT id, phone, email, name, city, source, notified, created_at
+     FROM waitlist ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+  const total = (await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist").first()).c;
+  return json({ items: results || [], total });
 }
 
 // ============================================================
@@ -808,7 +1342,36 @@ export default {
         return await servePhoto(env, key);
       }
 
+      // Firebase Auth helper reverse-proxy — serve Google's sign-in handler under
+      // OUR origin (rollingstyle.org) instead of rolling-style.firebaseapp.com.
+      // signInWithRedirect breaks inside the installed app (TWA) because the
+      // browser partitions storage across the two origins, so the returned token
+      // can't be read back ("bounces to login"). Same-origin auth fixes it.
+      // Requires: authDomain="rollingstyle.org" in firebase-auth.js AND
+      // "https://rollingstyle.org/__/auth/handler" added to the OAuth client's
+      // authorized redirect URIs in Google Cloud Console.
+      if (path.startsWith("/__/auth/") || path === "/__/firebase/init.json") {
+        const target = "https://rolling-style.firebaseapp.com" + path + url.search;
+        const fwdHeaders = new Headers(req.headers);
+        fwdHeaders.delete("host");
+        const upstream = await fetch(target, {
+          method: req.method,
+          headers: fwdHeaders,
+          body: (method === "GET" || method === "HEAD") ? undefined : await req.arrayBuffer(),
+          redirect: "manual",
+        });
+        const respHeaders = new Headers(upstream.headers);
+        respHeaders.delete("content-security-policy");
+        respHeaders.delete("x-frame-options");
+        return new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: respHeaders,
+        });
+      }
+
       // Auth
+      if (path === "/api/auth/firebase-login" && method === "POST") return await firebaseLogin(req, env);
       if (path === "/api/auth/request-otp" && method === "POST") return await requestOtp(req, env);
       if (path === "/api/auth/verify-otp"  && method === "POST") return await verifyOtp(req, env);
       if (path === "/api/auth/logout"      && method === "POST") return await logout(req, env);
@@ -827,6 +1390,7 @@ export default {
         if (!sub && method === "PATCH")  return await patchItem(req, env, id);
         if (!sub && method === "DELETE") return await deleteItem(req, env, id);
         if (sub === "view"     && method === "POST") return await viewItem(req, env, id);
+        if (sub === "contact"  && method === "POST") return await contactItem(req, env, id);
         if (sub === "favorite" && method === "POST") return await toggleFavorite(req, env, id);
         if (sub === "report"   && method === "POST") return await reportItem(req, env, id);
       }
@@ -840,17 +1404,34 @@ export default {
       }
       if (path === "/api/push/subscribe"   && method === "POST")   return await pushSubscribe(req, env);
       if (path === "/api/push/unsubscribe" && method === "POST")   return await pushUnsubscribe(req, env);
+      if (path === "/api/push/click"       && method === "POST")   return await recordPushClick(req, env);
+
+      // Install tracking
+      if (path === "/api/track/install" && method === "POST") return await trackInstall(req, env);
+
+      // Waitlist (Coming Soon)
+      if (path === "/api/waitlist"       && method === "POST") return await waitlistJoin(req, env);
+      if (path === "/api/waitlist/count" && method === "GET")  return await waitlistCount(env);
+
+      // Health check (public — for monitoring)
+      if (path === "/api/health" && method === "GET") return await healthCheck(env);
 
       // Admin API
       if (path.startsWith("/api/admin/")) {
         if (path === "/api/admin/login" && method === "POST") return await adminLogin(req, env);
         if (!requireAdmin(req, env)) return err("unauthorized", 401);
 
-        if (path === "/api/admin/stats"   && method === "GET") return await adminStats(env);
-        if (path === "/api/admin/users"   && method === "GET") return await adminUsers(env);
+        if (path === "/api/admin/stats"    && method === "GET") return await adminStats(env);
+        if (path === "/api/admin/installs" && method === "GET") return await adminInstalls(env);
+        if (path === "/api/admin/users"    && method === "GET") return await adminUsers(env);
         if (path === "/api/admin/items"   && method === "GET") return await adminItems(env, url);
+        if (path === "/api/admin/contacts" && method === "GET") return await adminContactStats(env, url);
         if (path === "/api/admin/reports" && method === "GET") return await adminReports(env);
         if (path === "/api/admin/push/broadcast" && method === "POST") return await adminPushBroadcast(req, env);
+        if (path === "/api/admin/push/campaigns" && method === "GET")  return await adminPushCampaigns(env);
+        if (path === "/api/admin/push/clicks"      && method === "GET")  return await adminPushClicks(env, url);
+        if (path === "/api/admin/push/subscribers" && method === "GET")  return await adminPushSubscribers(env, url);
+        if (path === "/api/admin/waitlist"       && method === "GET")  return await adminWaitlist(env, url);
 
         let m;
         if ((m = path.match(/^\/api\/admin\/users\/(\d+)\/ban$/)) && method === "POST")

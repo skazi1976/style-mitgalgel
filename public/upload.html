@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#ff6b8a">
   <title>העלאת פריט — סטייל מתגלגל</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,6 +80,7 @@
   </form>
 </main>
 
+<script src="/firebase-auth.js"></script>
 <script src="/app.js"></script>
 <script>
 // Auth check
@@ -157,6 +158,13 @@ document.getElementById("uploadForm").onsubmit = async (e) => {
   e.preventDefault();
   if (photos.length === 0) return toast("הוסיפי לפחות תמונה אחת");
 
+  // Re-check auth right before upload — token may have expired since page load
+  if (!Auth.isLoggedIn()) {
+    toast("נא להתחבר תחילה");
+    showLoginModal();
+    return;
+  }
+
   const btn = document.getElementById("submitBtn");
   btn.disabled = true;
   btn.textContent = "מעלה...";
@@ -165,11 +173,49 @@ document.getElementById("uploadForm").onsubmit = async (e) => {
   photos.forEach(f => fd.append("photos", f));
 
   try {
-    const res = await api("/api/items", { method: "POST", body: fd });
-    toast("פורסם! 🎉");
-    setTimeout(() => location.href = "/item.html?id=" + res.id, 1000);
+    // Direct fetch so we can inspect the HTTP status (api() throws a generic Error)
+    const res = await fetch("/api/items", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + Auth.token() },
+      body: fd,
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+
+    if (res.ok) {
+      toast("פורסם! 🎉");
+      // High-intent moment: the seller just listed — prompt to enable push so they
+      // get notified the second someone is interested. Always redirects after.
+      const goToItem = () => { location.href = "/item.html?id=" + data.id; };
+      showPushPrompt({
+        title: "הפריט פורסם! 🎉",
+        body: "רוצה לדעת ברגע שמתעניינים בפריט שלך? הפעילי התראות ונעדכן אותך על כל פנייה, שאלה או שמירה — שלא תפספסי קונה.",
+        cta: "🔔 כן, עדכנו אותי על פניות",
+        onDone: goToItem,
+      });
+      return;
+    }
+
+    // Specific status handling — clearer messages than generic "not connected"
+    if (res.status === 401) {
+      Auth.clear();
+      toast("פג תוקף ההתחברות, נא להיכנס שוב");
+      showLoginModal();
+    } else if (res.status === 403) {
+      toast(data.error || "אין הרשאה");
+    } else if (res.status === 413 || (data.error || "").includes("גדולה")) {
+      toast("תמונה גדולה מדי — נסי תמונות עד 5MB");
+    } else if (res.status >= 500) {
+      toast("שגיאת שרת זמנית — נסי שוב");
+    } else {
+      toast(data.error || `שגיאה (${res.status})`);
+    }
+    btn.disabled = false;
+    btn.textContent = "📤 פרסמי פריט";
   } catch (err) {
-    toast(err.message);
+    // Real network failure (offline, fetch threw)
+    console.error("[Upload] network error:", err);
+    toast("בעיית רשת — בדקי את החיבור לאינטרנט ונסי שוב");
     btn.disabled = false;
     btn.textContent = "📤 פרסמי פריט";
   }

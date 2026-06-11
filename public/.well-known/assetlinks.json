@@ -1,0 +1,11 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "org.rollingstyle.twa",
+    "sha256_cert_fingerprints": [
+      "32:AD:27:51:85:9E:8B:84:2A:7B:79:EC:BB:23:BD:2A:A3:AE:1C:7E:98:49:90:F3:FF:AE:A7:CF:50:2E:04:2F",
+      "35:81:5D:24:00:D6:E1:5C:78:8C:71:0C:62:D3:45:48:67:0F:BC:FA:20:21:D0:BC:B4:A2:1D:B2:12:6A:8A:45"
+    ]
+  }
+}]

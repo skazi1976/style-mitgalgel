@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#ff6b8a">
+  <title>מחיקת חשבון — סטייל מתגלגל</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .legal { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; line-height: 1.7; }
+    .legal h1 { font-size: 26px; margin-bottom: 8px; }
+    .legal h2 { font-size: 19px; margin-top: 28px; margin-bottom: 8px; color: #333; }
+    .legal p, .legal li { color: #444; font-size: 15px; }
+    .legal ul { padding-inline-start: 22px; margin: 8px 0; }
+    .legal .updated { color: #888; font-size: 13px; margin-bottom: 20px; }
+    .legal a { color: var(--pink, #ff6b8a); }
+    .legal .app-info {
+      background: #fff5f7;
+      border: 1px solid #ffd1dc;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin: 16px 0 24px;
+    }
+    .legal .app-info b { color: #d84a6a; }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 20px 0;
+    }
+    .btn-delete {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      background: #25d366;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      min-width: 200px;
+    }
+    .btn-delete.email {
+      background: var(--pink, #ff6b8a);
+    }
+    .btn-delete:hover { opacity: 0.92; }
+    .timeline {
+      background: #f9f9fb;
+      border-right: 3px solid var(--pink, #ff6b8a);
+      padding: 12px 16px;
+      margin: 12px 0;
+      border-radius: 8px;
+    }
+    .timeline li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="icon-btn" onclick="history.back()">→</button>
+  <div class="logo" style="flex:1">סטייל מתגלגל</div>
+  <span style="width:40px"></span>
+</header>
+
+<main class="legal">
+  <h1>מחיקת חשבון ונתונים</h1>
+  <p class="updated">עדכון אחרון: 24 באפריל 2026</p>
+
+  <div class="app-info">
+    <p style="margin:0">
+      <b>אפליקציה:</b> סטייל מתגלגל<br>
+      <b>מפתחת:</b> Rolling Style<br>
+      <b>יצירת קשר:</b> <a href="mailto:admin@rollingstyle.org">admin@rollingstyle.org</a>
+    </p>
+  </div>
+
+  <p>
+    את יכולה לבקש בכל רגע למחוק את חשבונך ואת כל הנתונים האישיים שלך מהאפליקציה.
+    דף זה מסביר איך לעשות זאת, מה נמחק, ומה נשמר (אם בכלל).
+  </p>
+
+  <h2>1. איך לבקש מחיקה</h2>
+  <p>בחרי את האופן הנוח לך — שתי הדרכים מובילות לאותה תוצאה:</p>
+
+  <div class="btn-row">
+    <a class="btn-delete"
+       href="https://wa.me/972504247932?text=%D7%A9%D7%9C%D7%95%D7%9D%2C%20%D7%90%D7%A0%D7%99%20%D7%9E%D7%91%D7%A7%D7%A9%D7%AA%20%D7%9C%D7%9E%D7%97%D7%95%D7%A7%20%D7%90%D7%AA%20%D7%94%D7%97%D7%A9%D7%91%D7%95%D7%9F%20%D7%A9%D7%9C%D7%99%20%D7%91%D7%A1%D7%98%D7%99%D7%99%D7%9C%20%D7%9E%D7%AA%D7%92%D7%9C%D7%92%D7%9C.%20%D7%9E%D7%A1%D7%A4%D7%A8%20%D7%94%D7%98%D7%9C%D7%A4%D7%95%D7%9F%20%D7%A9%D7%9C%D7%99%3A%20">
+      📱 בקשה ב-WhatsApp
+    </a>
+    <a class="btn-delete email" href="mailto:admin@rollingstyle.org?subject=בקשת%20מחיקת%20חשבון&body=שלום%2C%0D%0A%0D%0Aאני%20מבקשת%20למחוק%20את%20החשבון%20שלי%20באפליקציית%20סטייל%20מתגלגל.%0D%0A%0D%0Aמספר%20הטלפון%20הרשום%20בחשבון%3A%20">
+      ✉️ שליחת מייל
+    </a>
+  </div>
+
+  <p>
+    בבקשה כללי את <b>מספר הטלפון שאיתו נרשמת</b> — זהו המזהה היחיד שלך באפליקציה,
+    ואנו זקוקות לו כדי לאתר את החשבון.
+  </p>
+
+  <h2>2. מה יימחק</h2>
+  <ul>
+    <li><b>פרטי חשבון</b> — מספר טלפון, שם, עיר</li>
+    <li><b>כל הפריטים שפרסמת</b> — כולל תמונות, תיאורים, מחירים</li>
+    <li><b>מועדפים</b> — פריטים ששמרת ללב</li>
+    <li><b>דיווחים שהגשת</b> — אם הגשת דיווחים על פריטים</li>
+    <li><b>אסימוני התראות Push</b> — לא יישלחו אלייך עוד התראות</li>
+    <li><b>סשנים פתוחים</b> — את תנותקי מכל מכשיר</li>
+  </ul>
+
+  <h2>3. מה יישמר (ולמה)</h2>
+  <p>לאחר מחיקת החשבון, חלק מצומצם מהמידע יישמר לתקופות קצרות מהסיבות הבאות:</p>
+  <ul>
+    <li>
+      <b>לוגי שרת אנונימיים</b> — נשמרים עד 30 יום לצורך אבטחה ואיתור תקלות.
+      אינם כוללים מידע אישי מזהה לאחר המחיקה.
+    </li>
+    <li>
+      <b>נתונים מצרפיים אנונימיים</b> — סטטיסטיקות שימוש (כמה פריטים נצפו וכו׳) —
+      אין דרך לשייך אותם אלייך לאחר המחיקה.
+    </li>
+    <li>
+      <b>התכתבויות ב-WhatsApp</b> — שיחות שנוצרו ישירות בינך לבין משתמשות אחרות
+      אינן באחריותנו ונשמרות אצל WhatsApp/Meta לפי תנאי השירות שלהם.
+    </li>
+  </ul>
+
+  <h2>4. לוח זמנים</h2>
+  <div class="timeline">
+    <ul style="padding-inline-start:18px;margin:0">
+      <li><b>תוך 48 שעות</b> — נאשר את קבלת הבקשה במייל/WhatsApp</li>
+      <li><b>תוך 7 ימים</b> — החשבון, הפריטים והתמונות יימחקו מהמערכת</li>
+      <li><b>תוך 30 יום</b> — לוגי השרת ייעלמו אוטומטית</li>
+    </ul>
+  </div>
+
+  <h2>5. מחיקה חלקית של נתונים (בתוך האפליקציה)</h2>
+  <p>
+    אם את רוצה למחוק <b>חלק מהנתונים שלך בלבד</b> — בלי למחוק את כל החשבון —
+    את יכולה לעשות זאת ישירות מתוך האפליקציה, ללא צורך לפנות אלינו:
+  </p>
+
+  <h3 style="font-size:17px;margin-top:20px;color:#444">א. מחיקת פריט בודד</h3>
+  <ol>
+    <li>פתחי את מסך <b>הפרופיל שלי</b></li>
+    <li>לחצי על הפריט שאת רוצה להסיר</li>
+    <li>בעמוד הפריט — לחצי על כפתור <b style="color:#d84a6a">"מחקי פריט"</b></li>
+    <li>אשרי את המחיקה — הפריט והתמונות שלו יימחקו מיד לצמיתות</li>
+  </ol>
+
+  <h3 style="font-size:17px;margin-top:20px;color:#444">ב. עדכון פרטים אישיים</h3>
+  <ol>
+    <li>מסך הפרופיל → עריכה</li>
+    <li>ניתן לשנות או למחוק: שם תצוגה, עיר</li>
+    <li><b>שים לב:</b> מספר הטלפון לא ניתן לשינוי כי הוא המזהה הייחודי של החשבון — למחיקתו יש למחוק את כל החשבון</li>
+  </ol>
+
+  <h3 style="font-size:17px;margin-top:20px;color:#444">ג. הסרת מועדפים</h3>
+  <ol>
+    <li>מסך המועדפים</li>
+    <li>לחצי על אייקון הלב לביטול — הפריט יוסר מהרשימה</li>
+  </ol>
+
+  <h3 style="font-size:17px;margin-top:20px;color:#444">ד. ביטול התראות Push</h3>
+  <ol>
+    <li>בהגדרות האפליקציה → התראות → בטלי</li>
+    <li>או בהגדרות הדפדפן/המכשיר — הסירי את ההרשאה לאתר</li>
+    <li>אסימון ההתראות יימחק אוטומטית מהשרת תוך 30 יום</li>
+  </ol>
+
+  <p style="background:#fff5f7;padding:12px 16px;border-radius:10px;border:1px solid #ffd1dc">
+    <b>הערה:</b> פעולות אלה מיידיות ואינן ניתנות לביטול. אין תקופת שמירה נוספת —
+    הנתונים נמחקים מבסיס הנתונים מיידית.
+  </p>
+
+  <h2>6. יצירת קשר</h2>
+  <p>
+    שאלות נוספות? כתבי לנו:
+    <a href="mailto:admin@rollingstyle.org">admin@rollingstyle.org</a>
+  </p>
+
+  <p style="margin-top:32px;text-align:center;color:#888;font-size:13px">
+    <a href="/privacy.html" style="color:#888">מדיניות פרטיות</a>
+  </p>
+</main>
+</body>
+</html>

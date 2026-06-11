@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#ff6b8a">
   <title>סטייל מתגלגל — קונים ומוכרים בגדים יד שנייה</title>
   <link rel="manifest" href="/manifest.json">
@@ -10,6 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="סטייל מתגלגל">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 </head>
 <body>
@@ -17,10 +21,44 @@
 <header class="topbar">
   <div class="logo">סטייל מתגלגל</div>
   <input type="search" id="searchBox" class="search-input" placeholder="חיפוש שמלות, ג'ינסים, מותגים...">
+  <button class="icon-btn" id="notifBtn" title="הפעלת התראות" style="position:relative">🔔<span id="notifDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;background:#e74c3c;border-radius:50%"></span></button>
   <button class="icon-btn" id="loginBtn" title="התחברות">👤</button>
 </header>
 
 <main class="container">
+
+  <!-- Download-the-app banner (hidden inside the installed app via JS) -->
+  <a href="#" id="getAppBanner" style="display:none;align-items:center;gap:10px;background:linear-gradient(135deg,#ff6b8a 0%,#c850c0 100%);color:white;padding:12px 16px;border-radius:14px;margin:0 12px 14px;text-decoration:none;font-weight:700;box-shadow:0 6px 20px rgba(255,107,138,0.25)">
+    <span style="font-size:22px">📲</span>
+    <div style="flex:1;line-height:1.3">
+      <div style="font-size:14px">הורידי את האפליקציה</div>
+      <div style="font-size:12px;opacity:0.92;font-weight:500">דילים ופריטים חדשים ישר לטלפון 🔔</div>
+    </div>
+    <span style="font-size:18px">←</span>
+  </a>
+
+  <!-- Small "install app" pill (returning visitors) -->
+  <a href="#" id="getAppSmall" style="display:none;align-items:center;gap:7px;width:fit-content;margin:0 12px 10px auto;background:#fff;border:1px solid #eaeaea;color:#333;padding:6px 13px;border-radius:22px;text-decoration:none;font-weight:600;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+    <svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true">
+      <path fill="#00C3FF" d="M58 24c-7 4-11 12-11 22v420c0 10 4 18 11 22l236-235v-2z"/>
+      <path fill="#FFCE00" d="M372 339l-79-79v-2l79-79 94 53c27 15 27 40 0 55z"/>
+      <path fill="#00F076" d="M372 338l-79-79L59 467c9 6 23 6 39-3z"/>
+      <path fill="#FF3A44" d="M372 180L98 24c-16-9-30-9-39-3l234 235z"/>
+    </svg>
+    <span>התקנת האפליקציה</span>
+  </a>
+
+  <!-- In-app notification opt-in banner (shown only inside the installed app
+       when notifications aren't enabled yet). Reliable replacement for the
+       timed auto-popup modal which didn't fire in some TWAs. -->
+  <div id="notifBanner" role="button" style="display:none;align-items:center;gap:10px;background:linear-gradient(135deg,#5b6abf 0%,#7b8de3 100%);color:white;padding:13px 16px;border-radius:14px;margin:0 12px 14px;font-weight:700;box-shadow:0 6px 20px rgba(91,106,191,0.28);cursor:pointer">
+    <span style="font-size:23px">🔔</span>
+    <div style="flex:1;line-height:1.3">
+      <div style="font-size:14px">הפעילי התראות</div>
+      <div style="font-size:12px;opacity:0.92;font-weight:500">קבלי עדכון ראשונה על דילים ופריטים חדשים 💖</div>
+    </div>
+    <span id="notifBannerBtn" style="font-size:13px;background:rgba(255,255,255,0.22);padding:6px 14px;border-radius:20px;white-space:nowrap">הפעילי</span>
+  </div>
 
   <!-- Hero -->
   <section class="hero">
@@ -71,13 +109,14 @@
   <div class="install-modal" id="notifModal">
     <div class="install-modal-inner">
       <button class="install-modal-x" id="notifModalX" aria-label="סגור">✕</button>
-      <div class="install-modal-icon" style="font-size:38px">🔔</div>
-      <h3>להפעיל התראות?</h3>
-      <p>קבלי הודעה בכל פעם שמישהי מעלה פריט חדש — שמלות, נעליים, תיקים ועוד.<br>אפשר לכבות בכל רגע.</p>
-      <button class="btn install-modal-go" id="notifEnableBtn">כן, הפעילי</button>
+      <div class="install-modal-icon" style="font-size:42px">💎</div>
+      <h3>אל תפספסי את הפריטים השווים!</h3>
+      <p style="font-size:15px;line-height:1.6">הפריטים הכי שווים <b>נחטפים תוך דקות</b> 💨<br>הפעילי התראות והיי הראשונה לדעת כשעולה משהו חדש 👗</p>
+      <button class="btn install-modal-go" id="notifEnableBtn">🔔 כן, רוצה להיות ראשונה!</button>
       <button class="install-modal-later" id="notifLaterBtn">לא עכשיו</button>
     </div>
   </div>
+
 
   <!-- Categories filter -->
   <div class="filters" id="categoryFilters"></div>
@@ -100,10 +139,16 @@
 
 <a href="/upload.html" class="fab" title="העלי פריט">+</a>
 
+<script src="/firebase-auth.js"></script>
 <script src="/app.js"></script>
 <script>
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // updateViaCache:"none" → the browser NEVER serves sw.js from its HTTP cache,
+  // so new service-worker versions are detected immediately (prevents the app
+  // getting stuck on an old cached SW for up to 24h).
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+    .then((reg) => { try { reg.update(); } catch (e) {} })
+    .catch(() => {});
 }
 </script>
 <script>
@@ -216,6 +261,20 @@ loadItems(true);
 
   banner.classList.add("show");
 
+  // One-time styles for clearer, visual iOS install instructions
+  (function(){
+    if (document.getElementById("smgInstallStyles")) return;
+    var s = document.createElement("style"); s.id = "smgInstallStyles";
+    s.textContent =
+      "@keyframes smgBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}"
+      + ".smg-step{display:flex;gap:10px;align-items:flex-start;margin:11px 0;text-align:right;line-height:1.5}"
+      + ".smg-step .n{flex:0 0 auto;width:27px;height:27px;border-radius:50%;background:#ff6b8a;color:#fff;font-weight:800;display:grid;place-items:center;font-size:14px}"
+      + ".smg-share-ico{display:inline-flex;vertical-align:middle;background:#eef4ff;border-radius:7px;padding:2px 5px;margin:0 3px}"
+      + ".smg-bounce{animation:smgBounce 1s infinite;display:inline-block;font-size:30px;line-height:1}";
+    document.head.appendChild(s);
+  })();
+  var SHARE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/></svg>';
+
   let deferredPrompt = null;
   let autoPoppedThisLoad = false;
 
@@ -295,14 +354,13 @@ loadItems(true);
       return;
     }
     openModal({
-      title: "התקנה באייפון 📱",
-      body: `<ol class="install-modal-list">
-              <li>1️⃣ לחצי על <b>כפתור השיתוף</b> למטה (ריבוע עם חץ ⬆️)</li>
-              <li>2️⃣ גללי ובחרי <b>"הוספה למסך הבית"</b></li>
-              <li>3️⃣ לחצי <b>"הוספה"</b> בפינה</li>
-            </ol>`,
-      hint: "⬇️ כפתור השיתוף נמצא בסרגל התחתון של Safari",
-      goText: "הבנתי",
+      title: "התקנה לאייפון — קל מאוד 📱",
+      body: `<p style="margin-bottom:4px;font-weight:700;color:#333">3 צעדים מהירים (ב-Safari):</p>
+            <div class="smg-step"><span class="n">1</span><span>לחצי על כפתור <b>השיתוף</b> <span class="smg-share-ico">${SHARE_SVG}</span> שבתחתית מסך ה-Safari</span></div>
+            <div class="smg-step"><span class="n">2</span><span>גללי ברשימה ובחרי <b>"הוספה למסך הבית"</b> ➕</span></div>
+            <div class="smg-step"><span class="n">3</span><span>לחצי <b>"הוספה"</b> מימין למעלה — וזהו, האפליקציה במסך הבית! 💃</span></div>`,
+      hint: `<div style="text-align:center"><span class="smg-bounce">⬇️</span><br><b>כפתור השיתוף נמצא כאן למטה</b></div>`,
+      goText: "הבנתי, אני מתקינה",
       goFn: () => closeModal(false),
       later: "אולי אחר כך",
     });
@@ -312,13 +370,15 @@ loadItems(true);
     if (autoPoppedThisLoad) return;
     autoPoppedThisLoad = true;
     openModal({
-      title: "פתחי בדפדפן רגיל",
-      body: `<p>את נמצאת בדפדפן של אפליקציה (WhatsApp / Facebook / Instagram) שלא מאפשר התקנה של אפליקציות.</p>
-             <p style="margin-top:10px"><b>פתחי ב-Chrome או Safari</b> ואז תוכלי להתקין בלחיצה אחת.</p>`,
+      title: `כדי להתקין — פתחי ב-${isAndroid ? "Chrome" : "Safari"} 🌐`,
+      body: `<p>את גולשת כרגע <b>מתוך אפליקציה</b> (וואטסאפ / אינסטגרם / פייסבוק) — ושם אי אפשר להתקין. זה קל לתקן:</p>
+             <div class="smg-step"><span class="n">1</span><span>לחצי <b>"העתיקי קישור"</b> למטה 📋</span></div>
+             <div class="smg-step"><span class="n">2</span><span>פתחי את <b>${isAndroid ? "Chrome" : "Safari"}</b>, הדביקי בשורת הכתובת ועברי לדף</span></div>
+             <div class="smg-step"><span class="n">3</span><span>שם תופיע אפשרות <b>ההתקנה</b> 💃</span></div>`,
       hint: isAndroid
-        ? "💡 לחצי על <b>⋮</b> בפינה ואז <b>'פתח ב-Chrome'</b>"
-        : "💡 לחצי על <b>⋯</b> ואז <b>'פתח ב-Safari'</b>",
-      goText: "העתיקי קישור",
+        ? "💡 קיצור: לחצי על <b>⋮</b> בפינה ואז <b>'פתח ב-Chrome'</b>"
+        : "💡 קיצור: לחצי על <b>aA</b> או <b>⋯</b> ואז <b>'פתח ב-Safari'</b>",
+      goText: "📋 העתיקי קישור",
       goFn: () => {
         navigator.clipboard.writeText(location.href).then(() => {
           modalGo.textContent = "הועתק ✓";
@@ -350,9 +410,33 @@ loadItems(true);
     });
   }
 
+  // Android → send to the Google Play Store (the real app), not the PWA install.
+  const PLAY_URL = "https://play.google.com/store/apps/details?id=org.rollingstyle.twa";
+  function openPlayStore() {
+    // Works from Chrome and from in-app browsers (WhatsApp/FB) — opens the Play Store app.
+    window.location.href = PLAY_URL;
+  }
+  function showPlayStoreModal() {
+    if (autoPoppedThisLoad) return;
+    autoPoppedThisLoad = true;
+    openModal({
+      title: "התקיני את סטייל מתגלגל 📲",
+      body: `<ul class="install-modal-list">
+              <li>✨ גישה מהירה ממסך הבית</li>
+              <li>🔔 התראות על דילים ופריטים חדשים</li>
+              <li>📶 חוויה מהירה ונוחה</li>
+            </ul>`,
+      goText: "התקיני מ-Google Play",
+      goFn: openPlayStore,
+    });
+  }
+
   // ---- Auto-popup logic ----
   if (recentlyDismissed) {
     // Respect user — banner still visible, but no auto-popup
+  } else if (isAndroid) {
+    // Android of any browser → Google Play
+    setTimeout(showPlayStoreModal, isInApp ? 800 : 2500);
   } else if (isInApp) {
     setTimeout(showInAppModal, 800);
   } else if (isIOS) {
@@ -377,18 +461,44 @@ loadItems(true);
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    if (isAndroid) return; // Android uses the Play Store app, not the PWA prompt
     if (!autoPoppedThisLoad && !recentlyDismissed) showChromeReadyModal();
-    // Ensure the banner button also works
   });
 
   // Banner button (fallback)
   bannerBtn.addEventListener("click", async () => {
+    autoPoppedThisLoad = false;   // a manual click must ALWAYS show the modal (even after the auto-popup already fired)
+    if (isAndroid) return openPlayStore();   // Android → Google Play
     if (deferredPrompt) return triggerNativeInstall();
     if (isInApp) return showInAppModal();
     if (isIOS)   return showIOSModal();
-    if (isAndroid) return showFallbackModal();
     showFallbackModal();
   });
+
+  // "Download the app" CTA — only in a browser (this IIFE returned early in the app).
+  // First visit → big banner. Returning visits → small pill with the Google Play icon.
+  const getAppBanner = document.getElementById("getAppBanner");
+  const getAppSmall  = document.getElementById("getAppSmall");
+  function wireGetApp(el) {
+    if (!el) return;
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      autoPoppedThisLoad = false;   // a manual click must ALWAYS show the modal (even after the auto-popup already fired)
+      if (isAndroid) return openPlayStore();
+      if (deferredPrompt) return triggerNativeInstall();
+      if (isInApp) return showInAppModal();
+      if (isIOS)   return showIOSModal();
+      showFallbackModal();
+    });
+  }
+  wireGetApp(getAppBanner);
+  wireGetApp(getAppSmall);
+  if (localStorage.getItem("smg_getapp_seen")) {
+    if (getAppSmall) getAppSmall.style.display = "flex";   // returning → small pill
+  } else {
+    if (getAppBanner) getAppBanner.style.display = "flex"; // first visit → big banner
+    localStorage.setItem("smg_getapp_seen", "1");
+  }
 
   // Modal close buttons
   modalLater.addEventListener("click", () => closeModal(true));
@@ -409,37 +519,73 @@ loadItems(true);
   });
 })();
 
-// ---------- Notifications opt-in modal ----------
-(async function () {
-  if (!Push.supported()) return;
+// ---------- Notifications bell button (always available) ----------
+(function() {
+  const notifBtn = document.getElementById("notifBtn");
+  const notifDot = document.getElementById("notifDot");
+  if (!notifBtn) return;
 
-  const perm = Push.permission();
-
-  // Permission denied — can't recover from page
-  if (perm === "denied") return;
-
-  // Permission already granted → always (re)sync subscription to server
-  if (perm === "granted") {
-    try {
-      await Push.enable(); // idempotent — re-registers subscription with the server
-      toast("התראות פעילות 🔔");
-    } catch (e) {
-      console.error("push resync failed:", e);
-      toast("שגיאה: " + (e.message || ""));
+  // Show red dot if push not yet enabled (gentle nudge without modal)
+  function updateDot() {
+    if (!Push.supported()) {
+      notifBtn.style.opacity = "0.4";
+      notifBtn.title = "ההתראות לא נתמכות בדפדפן הזה";
+      return;
     }
-    return;
+    const perm = Push.permission();
+    if (perm === "granted") {
+      notifDot.style.display = "none";
+      notifBtn.title = "ההתראות פעילות";
+    } else if (perm === "denied") {
+      notifDot.style.display = "none";
+      notifBtn.style.opacity = "0.4";
+      notifBtn.title = "ההתראות חסומות בדפדפן";
+    } else {
+      notifDot.style.display = "block";  // show red dot to attract clicks
+      notifBtn.title = "הפעלת התראות";
+    }
   }
+  updateDot();
 
-  // perm === "default" — show opt-in banner
-  const notifDismissedAt = parseInt(localStorage.getItem("smg_notif_dismissed") || "0", 10);
-  const A_WEEK = 7 * 24 * 3600 * 1000;
-  if (Date.now() - notifDismissedAt < A_WEEK) return;
+  notifBtn.addEventListener("click", async () => {
+    if (!Push.supported()) {
+      const miss = [];
+      if (!("serviceWorker" in navigator)) miss.push("serviceWorker");
+      if (!("PushManager" in window))      miss.push("PushManager");
+      if (!("Notification" in window))     miss.push("Notification");
+      toast("התראות לא נתמכות — חסר: " + (miss.join(", ") || "?"));
+      return;
+    }
+    const perm = Push.permission();
+    if (perm === "denied") {
+      toast("ההתראות חסומות. הפעילי אותן בהגדרות הדפדפן");
+      return;
+    }
+    if (perm === "granted") {
+      try {
+        await Push.enable();
+        toast("ההתראות פעילות 🔔");
+      } catch (e) { toast("שגיאה: " + (e.message || "")); }
+      updateDot();
+      return;
+    }
+    // perm === "default" — open the existing modal
+    const modal = document.getElementById("notifModal");
+    if (modal) modal.classList.add("show");
+  });
 
-  const modal = document.getElementById("notifModal");
-  const enableBtn = document.getElementById("notifEnableBtn");
-  const laterBtn  = document.getElementById("notifLaterBtn");
-  const xBtn      = document.getElementById("notifModalX");
+  // Re-check periodically (in case permission changes)
+  setInterval(updateDot, 3000);
+})();
+
+// ---------- Notifications opt-in modal ----------
+(function () {
+  const modal        = document.getElementById("notifModal");
+  const enableBtn    = document.getElementById("notifEnableBtn");
+  const laterBtn     = document.getElementById("notifLaterBtn");
+  const xBtn         = document.getElementById("notifModalX");
   const installModal = document.getElementById("installModal");
+  if (!modal || !enableBtn) return;
 
   function dismiss(remember = true) {
     modal.classList.remove("show");
@@ -447,43 +593,75 @@ loadItems(true);
   }
 
   async function enableNotifs() {
+    if (!Push.supported()) { toast("ההתראות לא נתמכות בדפדפן הזה"); return; }
     enableBtn.disabled = true;
-    enableBtn.textContent = "...";
+    const orig = enableBtn.textContent;
+    enableBtn.textContent = "מפעיל...";
     try {
       await Push.enable();
       enableBtn.textContent = "הופעל ✓";
       toast("התראות הופעלו 🔔");
       setTimeout(() => dismiss(true), 800);
     } catch (e) {
-      toast(e.message || "נכשל");
+      toast(e.message || "ההפעלה נכשלה");
       enableBtn.disabled = false;
-      enableBtn.textContent = "כן, הפעילי";
+      enableBtn.textContent = orig || "🔔 כן, רוצה להיות ראשונה!";
     }
   }
 
+  // ALWAYS wire the modal buttons — independent of permission / dismiss state.
+  // (Previously these were attached only after early-returns, so the bell could
+  //  open the modal while the "enable" button had no click handler.)
   enableBtn.addEventListener("click", enableNotifs);
-  laterBtn.addEventListener("click", () => dismiss(true));
-  xBtn.addEventListener("click", () => dismiss(true));
+  if (laterBtn) laterBtn.addEventListener("click", () => dismiss(true));
+  if (xBtn)     xBtn.addEventListener("click", () => dismiss(true));
   modal.addEventListener("click", (e) => { if (e.target === modal) dismiss(true); });
 
-  function tryShow() {
-    if (Push.permission() !== "default") return; // became granted/denied — skip
-    modal.classList.add("show");
-  }
+  if (!Push.supported()) return;
+  const perm = Push.permission();
 
-  // Delay so install modal gets priority; if install modal is up, wait longer
-  setTimeout(() => {
-    if (installModal && installModal.classList.contains("show")) {
-      const check = setInterval(() => {
-        if (!installModal.classList.contains("show")) {
-          clearInterval(check);
-          setTimeout(tryShow, 600);
-        }
-      }, 500);
-    } else {
-      tryShow();
+  // Already granted → silently (re)sync subscription to server on load.
+  // IMPORTANT: never unsubscribe here. Push.enable() reuses the existing
+  // subscription (or creates one only if none exists). Any unsubscribe-on-load
+  // logic churns/kills subscriptions in a TWA (localStorage flags don't reliably
+  // persist there), which is exactly what caused subscriptions to expire (410).
+  if (perm === "granted") {
+    Push.enable().catch((e) => console.error("push resync failed:", e));
+    return;
+  }
+  if (perm === "denied") return;
+
+  // Show the opt-in ONLY inside the installed app, never in a plain browser tab
+  // (there the priority is getting the visitor to INSTALL). Detect "in the app"
+  // with MULTIPLE signals — display-mode:standalone is not reliable across all
+  // TWAs, so we also accept the Android TWA referrer.
+  const inApp = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || window.navigator.standalone === true
+    || (document.referrer || "").indexOf("android-app://") === 0;
+  if (!inApp) return;
+
+  // perm === "default" — show a PERSISTENT opt-in banner (reliable). The old timed
+  // auto-popup modal silently failed to fire in some TWAs, so app users were never
+  // asked. The banner stays visible until notifications are enabled.
+  const notifBanner = document.getElementById("notifBanner");
+  if (!notifBanner) return;
+  notifBanner.style.display = "flex";
+  notifBanner.addEventListener("click", async () => {
+    if (notifBanner.dataset.busy === "1") return;
+    notifBanner.dataset.busy = "1";
+    const btn = document.getElementById("notifBannerBtn");
+    const orig = btn ? btn.textContent : "";
+    if (btn) btn.textContent = "מפעיל...";
+    try {
+      await Push.enable();
+      toast("התראות הופעלו 🔔");
+      notifBanner.style.display = "none";
+    } catch (e) {
+      toast(e.message || "ההפעלה נכשלה");
+      notifBanner.dataset.busy = "0";
+      if (btn) btn.textContent = orig;
     }
-  }, 4000);
+  });
 })();
 </script>
 

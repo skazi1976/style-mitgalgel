@@ -113,6 +113,7 @@
 
   <main class="container">
     <!-- Stats -->
+    <div id="healthBanner" style="display:none;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px;font-weight:600"></div>
     <div class="stats" id="stats"></div>
 
     <!-- Tabs -->
@@ -121,6 +122,9 @@
       <button class="tab" data-tab="users">משתמשות</button>
       <button class="tab" data-tab="reports">דיווחים <span id="reportBadge"></span></button>
       <button class="tab" data-tab="push">📢 פוש</button>
+      <button class="tab" data-tab="installs">📲 התקנות</button>
+      <button class="tab" data-tab="waitlist">⏳ רשימת המתנה</button>
+      <button class="tab" data-tab="contacts">💬 פניות וואטסאפ</button>
     </div>
 
     <!-- Panels -->
@@ -158,6 +162,7 @@
             <tr>
               <th>ID</th><th>שם</th><th>טלפון</th>
               <th class="hide-mobile">עיר</th>
+              <th>מקור</th>
               <th>פריטים</th>
               <th class="hide-mobile">דירוג</th>
               <th>סטטוס</th><th>פעולות</th>
@@ -181,6 +186,9 @@
           <label style="font-size:13px;font-weight:500">קישור אחרי לחיצה (אופציונלי)
             <input id="pushUrl" placeholder="/" value="/" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
           </label>
+          <label style="font-size:13px;font-weight:500">📱 שליחה למספר בודד (אופציונלי — לבדיקה)
+            <input id="pushPhone" placeholder="למשל: 0501234567 (השאירי ריק לשליחה לכולן)" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
+          </label>
           <label style="font-size:13px;font-weight:500">קטגוריה ספציפית (אופציונלי)
             <select id="pushCategory" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;font-family:inherit">
               <option value="">כל המשתמשות</option>
@@ -196,6 +204,143 @@
           <button class="btn-s ok" id="pushSendBtn" style="padding:12px;font-size:14px;font-weight:700">שלחי התראה</button>
           <div id="pushResult" style="font-size:13px;color:var(--muted);min-height:20px"></div>
         </div>
+      </div>
+
+      <div class="panel-bar" style="margin-top:20px"><strong>🔔 מנויות פוש — מי הסכימה לקבל התראות</strong>
+        <span id="pushSubsTotal" style="margin-right:auto;font-size:13px;color:var(--muted)"></span>
+        <button class="btn-s" id="pushSubsRefresh">🔄 רענן</button>
+      </div>
+      <div style="padding:10px 18px 0;display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
+        <span>👤 עם שם: <b id="pushSubsWithUser">-</b></span>
+        <span>👻 אנונימיות: <b id="pushSubsAnon">-</b></span>
+        <span>✅ פעילות: <b id="pushSubsActive">-</b></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>שם</th>
+              <th>טלפון</th>
+              <th class="hide-mobile">עיר</th>
+              <th>מכשיר</th>
+              <th>נרשמה</th>
+              <th class="hide-mobile">פעילה לאחרונה</th>
+              <th>סטטוס</th>
+            </tr>
+          </thead>
+          <tbody id="pushSubsTbody"></tbody>
+        </table>
+      </div>
+      <div style="padding:10px 18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-s" id="pushSubsExportCsv">📥 ייצוא CSV</button>
+        <button class="btn-s" id="pushSubsExportPhones">📞 רק טלפונים</button>
+      </div>
+
+      <div class="panel-bar" style="margin-top:20px"><strong>📊 קמפיינים אחרונים — מי פתח וכמה</strong>
+        <button class="btn-s" id="pushRefresh" style="margin-right:auto">🔄 רענן</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>כותרת</th>
+              <th>נשלח</th>
+              <th>קליקים</th>
+              <th>CTR</th>
+              <th>משתמשות ייחודיות</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="pushCampaignsTbody"></tbody>
+        </table>
+      </div>
+
+      <div id="pushClicksDetails" style="display:none;padding:14px 18px;border-top:1px solid var(--border);background:#fafafa">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <strong id="pushClicksTitle"></strong>
+          <button class="btn-s" id="pushClicksClose" style="margin-right:auto">✕ סגור</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>שם</th>
+                <th>טלפון</th>
+                <th>עיר</th>
+                <th>זמן לחיצה</th>
+                <th class="hide-mobile">מכשיר</th>
+              </tr>
+            </thead>
+            <tbody id="pushClicksTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-installs" class="panel" style="display:none">
+      <div class="panel-bar">
+        <strong>📲 התקנות אפליקציה (PWA)</strong>
+        <span id="installsTotal" style="margin-right:auto;font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div style="padding:10px 18px 0;display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
+        <span>📲 אפליקציה: <b id="instApp" style="color:#27ae60">-</b></span>
+        <span>🔔 אישרו פוש: <b id="instPushCount" style="color:#27ae60">-</b></span>
+        <span>🌐 דפדפן: <b id="instBrowser">-</b></span>
+        <span style="opacity:.5">|</span>
+        <span>📱 Android: <b id="instAndroid">-</b></span>
+        <span>🍏 iOS: <b id="instIos">-</b></span>
+        <span>💻 Desktop: <b id="instDesktop">-</b></span>
+        <span>❓ אחר: <b id="instOther">-</b></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>סוג</th>
+              <th>🔔 פוש</th>
+              <th>פלטפורמה</th>
+              <th>משתמשת</th>
+              <th class="hide-mobile">User Agent</th>
+              <th>הותקן</th>
+              <th>פעיל לאחרונה</th>
+            </tr>
+          </thead>
+          <tbody id="installsTbody"></tbody>
+        </table>
+      </div>
+      <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-s" id="installsRefresh">🔄 רענן</button>
+      </div>
+    </div>
+
+    <div id="panel-waitlist" class="panel" style="display:none">
+      <div class="panel-bar">
+        <strong>⏳ רשימת המתנה (Coming Soon)</strong>
+        <span id="waitlistTotal" style="margin-right:auto;font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div style="padding:10px 18px;font-size:13px;color:var(--muted)">
+        נרשמות מ-<a href="/coming-soon.html" target="_blank" style="color:var(--pink-dark);font-weight:600">/coming-soon.html</a> — לידים לקמפיין השקה.
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>שם</th><th>טלפון</th>
+              <th class="hide-mobile">אימייל</th>
+              <th class="hide-mobile">מקור</th>
+              <th>נרשמה</th>
+            </tr>
+          </thead>
+          <tbody id="waitlistTbody"></tbody>
+        </table>
+      </div>
+      <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-s" id="waitlistExportCsv">📥 ייצוא CSV</button>
+        <button class="btn-s" id="waitlistExportPhones">📞 רק טלפונים</button>
+        <button class="btn-s" id="waitlistRefresh">🔄 רענן</button>
       </div>
     </div>
 
@@ -214,6 +359,23 @@
           <tbody id="reportsTbody"></tbody>
         </table>
       </div>
+    </div>
+    <!-- WhatsApp contacts ranking -->
+    <div id="panel-contacts" class="panel" style="display:none">
+      <div class="panel-bar">
+        <strong>💬 פניות וואטסאפ לפי פריט</strong>
+        <select id="contactsRange" style="margin-right:auto;padding:6px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px">
+          <option value="0">מאז ומתמיד</option>
+          <option value="7">7 ימים אחרונים</option>
+          <option value="30">30 ימים אחרונים</option>
+          <option value="1">24 שעות אחרונות</option>
+        </select>
+      </div>
+      <div style="padding:10px 14px;font-size:13px;color:#666">סה"כ פניות בתקופה: <strong id="contactsTotal">—</strong></div>
+      <table>
+        <thead><tr><th>#</th><th>פריט</th><th>מוכרת</th><th>פניות</th></tr></thead>
+        <tbody id="contactsTbody"></tbody>
+      </table>
     </div>
   </main>
 </div>
@@ -272,7 +434,7 @@ document.getElementById("logoutBtn").onclick = () => {
 async function bootApp() {
   document.getElementById("loginBg").style.display = "none";
   document.getElementById("app").style.display = "block";
-  await Promise.all([loadStats(), loadItems(), loadUsers(), loadReports()]);
+  await Promise.all([loadStats(), loadItems(), loadUsers(), loadReports(), loadHealth()]);
 }
 
 // Tabs
@@ -281,9 +443,13 @@ document.querySelectorAll(".tab").forEach((t) => {
     document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
     t.classList.add("active");
     const tab = t.dataset.tab;
-    ["items","users","reports","push"].forEach(k => {
+    ["items","users","reports","push","waitlist","installs","contacts"].forEach(k => {
       document.getElementById("panel-" + k).style.display = k === tab ? "block" : "none";
     });
+    if (tab === "waitlist") loadWaitlist();
+    if (tab === "installs") loadInstalls();
+    if (tab === "contacts") loadContacts();
+    if (tab === "push") { loadPushSubscribers(); loadPushCampaigns(); }
   };
 });
 
@@ -293,19 +459,44 @@ document.getElementById("pushSendBtn").onclick = async () => {
   const message = document.getElementById("pushBody").value.trim();
   const url = document.getElementById("pushUrl").value.trim() || "/";
   const category = document.getElementById("pushCategory").value || null;
+  const phone = document.getElementById("pushPhone").value.trim() || null;
   const result = document.getElementById("pushResult");
   if (!title || !message) { toast("חסרה כותרת או תוכן"); return; }
-  if (!confirm(`לשלוח להתראה "${title}"?`)) return;
+  const who = phone ? `למספר ${phone}` : "לכל המשתמשות";
+  if (!confirm(`לשלוח התראה "${title}" ${who}?`)) return;
   result.textContent = "שולח...";
   try {
     const r = await api("/api/admin/push/broadcast", {
       method: "POST",
-      body: { title, message, url, category },
+      body: { title, message, url, category, phone },
     });
     result.innerHTML = `✅ נשלח בהצלחה — ${r.sent} הצליחו, ${r.failed} נכשלו, ${r.gone} בוטלו (מתוך ${r.total})`;
     toast("נשלח");
   } catch (e) { result.textContent = "❌ " + e.message; toast(e.message); }
 };
+
+// ---------- WhatsApp contacts ranking ----------
+async function loadContacts() {
+  const range = document.getElementById("contactsRange").value;
+  const tbody = document.getElementById("contactsTbody");
+  tbody.innerHTML = '<tr><td colspan="4">טוען...</td></tr>';
+  try {
+    const d = await api("/api/admin/contacts?days=" + range);
+    document.getElementById("contactsTotal").textContent = d.total;
+    if (!d.items.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:#999">אין פניות עדיין בתקופה זו</td></tr>'; return; }
+    tbody.innerHTML = d.items.map((it, i) => {
+      const img = (it.photos && it.photos[0]) ? `<img src="${it.photos[0]}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-left:6px">` : "";
+      const sold = it.status === "sold" ? ' <span style="color:#999;font-size:11px">(נמכר)</span>' : "";
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${img}<a href="/item.html?id=${it.id}" target="_blank" style="color:inherit">${it.title || ("פריט " + it.id)}</a>${sold}</td>
+        <td>${it.seller_name || "—"}</td>
+        <td><strong style="color:#25D366;font-size:15px">${it.contacts}</strong></td>
+      </tr>`;
+    }).join("");
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="4">שגיאה: ${e.message}</td></tr>`; }
+}
+document.getElementById("contactsRange").onchange = loadContacts;
 
 // ---------- Stats ----------
 async function loadStats() {
@@ -320,9 +511,17 @@ async function loadStats() {
       { label: "דיווחים",  v: s.reports_open, cls: s.reports_open > 0 ? "alert" : "" },
       { label: "צפיות",    v: s.views,        cls: "" },
       { label: "מועדפים",  v: s.favorites,    cls: "" },
+      { label: "📲 התקנות אפליקציה", v: s.installs_app || 0,           cls: "ok" },
+      { label: "🔔 התקנות עם פוש",  v: s.installs_app_push || 0,
+        cls: (s.installs_app && s.installs_app_push) ? "ok" : "",
+        sub: s.installs_app ? Math.round((s.installs_app_push / s.installs_app) * 100) + "% אישרו" : "" },
+      { label: "📱 אפליקציה פעילה 7י׳", v: s.installs_app_active_7d || 0, cls: "" },
+      { label: "🌐 מכשירים ייחודיים", v: s.installs || 0,           cls: "" },
+      { label: "🔔 מנויי פוש פעילים", v: s.push_enabled || 0,       cls: "" },
+      { label: "📘 נרשמו מפייסבוק", v: s.signups_facebook || 0,    cls: (s.signups_facebook > 0) ? "ok" : "" },
     ];
     document.getElementById("stats").innerHTML = items.map(i =>
-      `<div class="stat ${i.cls}"><div class="stat-label">${i.label}</div><div class="stat-value">${i.v.toLocaleString("he-IL")}</div></div>`
+      `<div class="stat ${i.cls}"><div class="stat-label">${i.label}</div><div class="stat-value">${i.v.toLocaleString("he-IL")}</div>${i.sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${i.sub}</div>` : ""}</div>`
     ).join("");
     document.getElementById("reportBadge").innerHTML = s.reports_open > 0 ? `<span style="background:#e74c3c;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:4px">${s.reports_open}</span>` : "";
   } catch (e) { toast(e.message); }
@@ -377,13 +576,14 @@ async function loadUsers() {
   try {
     const { users } = await api("/api/admin/users");
     const body = document.getElementById("usersTbody");
-    if (!users.length) { body.innerHTML = `<tr><td colspan="8" class="empty-state">אין משתמשות</td></tr>`; return; }
+    if (!users.length) { body.innerHTML = `<tr><td colspan="9" class="empty-state">אין משתמשות</td></tr>`; return; }
     body.innerHTML = users.map(u => `
       <tr data-id="${u.id}">
         <td class="cell-id">${u.id}</td>
         <td style="font-weight:500">${escapeHtml(u.name || "—")}</td>
         <td class="cell-phone">${u.phone}</td>
         <td class="hide-mobile">${escapeHtml(u.city || "—")}</td>
+        <td>${u.signup_source === "facebook" ? '<span class="pill" style="background:#1877f2;color:#fff">📘 פייסבוק</span>' : (u.signup_source ? escapeHtml(u.signup_source) : "—")}</td>
         <td>${u.items_listed} / ${u.items_sold} מכירות</td>
         <td class="hide-mobile">${u.rating?.toFixed?.(1) || "5.0"} ⭐</td>
         <td>${u.banned ? `<span class="pill banned">חסומה</span>` : `<span class="pill active">פעילה</span>`}</td>
@@ -436,6 +636,272 @@ async function resolveReport(id) {
 }
 
 function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
+
+// ---------- Waitlist ----------
+let waitlistCache = [];
+async function loadWaitlist() {
+  try {
+    const d = await api("/api/admin/waitlist?limit=500");
+    waitlistCache = d.items || [];
+    document.getElementById("waitlistTotal").textContent = `סה"כ: ${d.total}`;
+    const tbody = document.getElementById("waitlistTbody");
+    if (!waitlistCache.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">אין עדיין נרשמות</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = waitlistCache.map(w => `
+      <tr>
+        <td>${w.id}</td>
+        <td>${escapeHtml(w.name) || "-"}</td>
+        <td dir="ltr" style="text-align:right">${escapeHtml(w.phone) || "-"}</td>
+        <td class="hide-mobile">${escapeHtml(w.email) || "-"}</td>
+        <td class="hide-mobile"><small>${escapeHtml(w.source) || "-"}</small></td>
+        <td><small>${new Date(w.created_at).toLocaleString("he-IL")}</small></td>
+      </tr>
+    `).join("");
+  } catch (e) { toast(e.message); }
+}
+
+document.getElementById("waitlistRefresh").onclick = loadWaitlist;
+
+// ---------- Installs ----------
+async function loadInstalls() {
+  try {
+    const d = await api("/api/admin/installs");
+    const installs = d.installs || [];
+    document.getElementById("installsTotal").textContent = `סה"כ: ${installs.length}`;
+    const counts = { android: 0, ios: 0, desktop: 0, other: 0 };
+    let appCount = 0, browserCount = 0, pushCount = 0;
+    installs.forEach(i => {
+      const p = (i.platform || "other").toLowerCase();
+      if (counts[p] != null) counts[p]++; else counts.other++;
+      if (i.is_app) appCount++; else browserCount++;
+      if (i.push_on) pushCount++;
+    });
+    document.getElementById("instApp").textContent = appCount;
+    document.getElementById("instBrowser").textContent = browserCount;
+    const instPushEl = document.getElementById("instPushCount");
+    if (instPushEl) instPushEl.textContent = pushCount;
+    document.getElementById("instAndroid").textContent = counts.android;
+    document.getElementById("instIos").textContent = counts.ios;
+    document.getElementById("instDesktop").textContent = counts.desktop;
+    document.getElementById("instOther").textContent = counts.other;
+
+    const tbody = document.getElementById("installsTbody");
+    if (!installs.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">עוד אין התקנות</td></tr>`;
+      return;
+    }
+    const platIcon = { android: "📱", ios: "🍏", desktop: "💻", other: "❓" };
+    tbody.innerHTML = installs.map(i => {
+      const p = (i.platform || "other").toLowerCase();
+      const typeCell = i.is_app
+        ? `<span style="color:#27ae60;font-weight:600;white-space:nowrap">📲 אפליקציה</span>`
+        : `<span style="color:var(--muted);white-space:nowrap">🌐 דפדפן</span>`;
+      const pushCell = i.push_on
+        ? `<span style="color:#27ae60;font-weight:600">🔔 כן</span>`
+        : `<span style="color:#bbb">🔕 לא</span>`;
+      const userCell = i.user_id
+        ? `${escapeHtml(i.user_name) || "—"}<br><small dir="ltr" style="color:var(--muted)">${escapeHtml(i.user_phone) || ""}</small>`
+        : `<small style="color:var(--muted)">אנונימי</small>`;
+      return `
+        <tr>
+          <td>${i.id}</td>
+          <td>${typeCell}</td>
+          <td>${pushCell}</td>
+          <td>${platIcon[p] || "❓"} <small>${escapeHtml(p)}</small></td>
+          <td>${userCell}</td>
+          <td class="hide-mobile"><small style="color:var(--muted)">${escapeHtml((i.user_agent || "").slice(0,80))}</small></td>
+          <td><small>${new Date(i.created_at * 1000).toLocaleString("he-IL")}</small></td>
+          <td><small>${new Date(i.last_seen * 1000).toLocaleString("he-IL")}</small></td>
+        </tr>`;
+    }).join("");
+  } catch (e) { toast(e.message); }
+}
+
+document.getElementById("installsRefresh").onclick = loadInstalls;
+
+// ---------- Health check ----------
+async function loadHealth() {
+  const banner = document.getElementById("healthBanner");
+  try {
+    // Health is a public endpoint — no auth needed
+    const res = await fetch("/api/health");
+    const d = await res.json();
+    if (d.ok) {
+      banner.style.display = "block";
+      banner.style.background = "#eafaf1";
+      banner.style.color = "#1e7e34";
+      banner.style.border = "1px solid #b7e7c4";
+      const checkCount = Object.keys(d.checks || {}).length;
+      banner.innerHTML = `✅ <b>המערכת תקינה</b> — ${checkCount} בדיקות עברו (${d.duration_ms}ms) <button onclick="loadHealth()" style="float:left;background:transparent;border:1px solid #1e7e34;color:#1e7e34;padding:2px 8px;border-radius:6px;font-size:12px;cursor:pointer">🔄</button>`;
+    } else {
+      banner.style.display = "block";
+      banner.style.background = "#fde8e8";
+      banner.style.color = "#9b2c2c";
+      banner.style.border = "1px solid #f5b5b5";
+      const failed = Object.entries(d.checks || {}).filter(([k, v]) => !v.ok).map(([k, v]) => `${k}: ${v.error || 'failed'}`);
+      banner.innerHTML = `❌ <b>בעיה במערכת</b> — ${failed.length} בדיקות נכשלו<br><small>${failed.join(' • ')}</small>`;
+    }
+  } catch (e) {
+    banner.style.display = "block";
+    banner.style.background = "#fff3cd";
+    banner.style.color = "#856404";
+    banner.style.border = "1px solid #ffe8a1";
+    banner.innerHTML = `⚠️ <b>בדיקת בריאות נכשלה</b> — ${e.message}`;
+  }
+}
+
+// ---------- Push campaigns + clicks ----------
+async function loadPushCampaigns() {
+  try {
+    const d = await api("/api/admin/push/campaigns");
+    const camps = d.campaigns || [];
+    const tbody = document.getElementById("pushCampaignsTbody");
+    if (!camps.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">עוד לא נשלחו קמפיינים</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = camps.map(c => {
+      const sent = c.sent_count || 0;
+      const clicks = c.click_count || 0;
+      const ctr = sent > 0 ? ((clicks / sent) * 100).toFixed(1) + "%" : "-";
+      const ctrColor = sent > 0 && (clicks / sent) >= 0.05 ? "var(--green)" : sent > 0 && (clicks / sent) >= 0.02 ? "#f39c12" : "var(--muted)";
+      return `
+        <tr>
+          <td><small>${new Date(c.created_at * 1000).toLocaleString("he-IL")}</small></td>
+          <td>${escapeHtml(c.title)}<br><small style="color:var(--muted)">${escapeHtml((c.body || "").slice(0,60))}</small></td>
+          <td>${sent.toLocaleString("he-IL")}</td>
+          <td><b>${clicks.toLocaleString("he-IL")}</b></td>
+          <td style="color:${ctrColor};font-weight:700">${ctr}</td>
+          <td>${(c.unique_users || 0).toLocaleString("he-IL")}</td>
+          <td>${clicks > 0 ? `<button class="btn-s" onclick="showPushClicks('${c.campaign_id}', '${escapeHtml(c.title).replace(/'/g,"\\'")}')">👁 מי לחץ</button>` : ""}</td>
+        </tr>`;
+    }).join("");
+  } catch (e) { toast(e.message); }
+}
+
+async function showPushClicks(campaignId, title) {
+  try {
+    const d = await api("/api/admin/push/clicks?campaign_id=" + encodeURIComponent(campaignId));
+    const clicks = d.clicks || [];
+    document.getElementById("pushClicksTitle").textContent = `קליקים: ${title} (${clicks.length})`;
+    const tbody = document.getElementById("pushClicksTbody");
+    if (!clicks.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">אין קליקים מתועדים</td></tr>`;
+    } else {
+      tbody.innerHTML = clicks.map(c => `
+        <tr>
+          <td>${escapeHtml(c.user_name) || "<small style='color:var(--muted)'>אנונימי</small>"}</td>
+          <td dir="ltr" style="text-align:right">${escapeHtml(c.user_phone) || "-"}</td>
+          <td>${escapeHtml(c.user_city) || "-"}</td>
+          <td><small>${new Date(c.clicked_at * 1000).toLocaleString("he-IL")}</small></td>
+          <td class="hide-mobile"><small style="color:var(--muted)">${escapeHtml((c.user_agent || "").slice(0,60))}</small></td>
+        </tr>`).join("");
+    }
+    const details = document.getElementById("pushClicksDetails");
+    details.style.display = "block";
+    details.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) { toast(e.message); }
+}
+
+document.getElementById("pushRefresh").onclick = loadPushCampaigns;
+document.getElementById("pushClicksClose").onclick = () => {
+  document.getElementById("pushClicksDetails").style.display = "none";
+};
+
+// ---------- Push subscribers (who opted-in to notifications) ----------
+let pushSubsCache = [];
+async function loadPushSubscribers() {
+  try {
+    const d = await api("/api/admin/push/subscribers?limit=500");
+    pushSubsCache = d.subscribers || [];
+    document.getElementById("pushSubsTotal").textContent = `סה"כ: ${d.total}`;
+    document.getElementById("pushSubsWithUser").textContent = d.with_user;
+    document.getElementById("pushSubsAnon").textContent = d.anonymous;
+    document.getElementById("pushSubsActive").textContent = d.active;
+
+    const tbody = document.getElementById("pushSubsTbody");
+    if (!pushSubsCache.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">עדיין לא נרשמו לפושים</td></tr>`;
+      return;
+    }
+    const provIcon = {
+      "android/chrome": "📱 Android",
+      "ios/safari":     "🍏 iOS",
+      "firefox":        "🦊 Firefox",
+      "windows/edge":   "💻 Edge",
+      "other":          "❓ אחר"
+    };
+    tbody.innerHTML = pushSubsCache.map(s => {
+      const userCell = s.user_id
+        ? `${escapeHtml(s.user_name) || "—"}`
+        : `<small style="color:var(--muted)">אנונימית</small>`;
+      const status = s.failures >= 3
+        ? `<span style="color:var(--red)">❌ נכשל</span>`
+        : s.failures > 0
+          ? `<span style="color:#f39c12">⚠️ ${s.failures} כשלונות</span>`
+          : `<span style="color:var(--green)">✅ פעיל</span>`;
+      return `
+        <tr>
+          <td>${s.id}</td>
+          <td>${userCell}</td>
+          <td dir="ltr" style="text-align:right">${escapeHtml(s.user_phone) || "-"}</td>
+          <td class="hide-mobile">${escapeHtml(s.user_city) || "-"}</td>
+          <td><small>${provIcon[s.provider] || s.provider}</small></td>
+          <td><small>${new Date(s.created_at * 1000).toLocaleString("he-IL")}</small></td>
+          <td class="hide-mobile"><small>${new Date(s.last_used * 1000).toLocaleString("he-IL")}</small></td>
+          <td>${status}</td>
+        </tr>`;
+    }).join("");
+  } catch (e) { toast(e.message); }
+}
+
+document.getElementById("pushSubsRefresh").onclick = loadPushSubscribers;
+
+document.getElementById("pushSubsExportCsv").onclick = () => {
+  if (!pushSubsCache.length) return toast("אין מה לייצא");
+  const rows = [["id","user_id","name","phone","city","provider","created_at","last_used","failures"]];
+  pushSubsCache.forEach(s => rows.push([
+    s.id, s.user_id || "", s.user_name || "", s.user_phone || "", s.user_city || "",
+    s.provider || "", new Date(s.created_at * 1000).toISOString(),
+    new Date(s.last_used * 1000).toISOString(), s.failures
+  ]));
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  downloadFile(csv, `push_subscribers_${Date.now()}.csv`, "text/csv");
+};
+
+document.getElementById("pushSubsExportPhones").onclick = () => {
+  if (!pushSubsCache.length) return toast("אין מה לייצא");
+  const phones = pushSubsCache.filter(s => s.user_phone).map(s => s.user_phone).join("\n");
+  if (!phones) return toast("אין טלפונים (כולן אנונימיות)");
+  downloadFile(phones, `push_phones_${Date.now()}.txt`, "text/plain");
+};
+
+document.getElementById("waitlistExportCsv").onclick = () => {
+  if (!waitlistCache.length) return toast("אין מה לייצא");
+  const rows = [["id","name","phone","email","city","source","created_at"]];
+  waitlistCache.forEach(w => rows.push([
+    w.id, w.name || "", w.phone || "", w.email || "", w.city || "", w.source || "",
+    new Date(w.created_at).toISOString()
+  ]));
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  downloadFile(csv, `waitlist_${Date.now()}.csv`, "text/csv");
+};
+
+document.getElementById("waitlistExportPhones").onclick = () => {
+  if (!waitlistCache.length) return toast("אין מה לייצא");
+  const phones = waitlistCache.filter(w => w.phone).map(w => w.phone).join("\n");
+  downloadFile(phones, `phones_${Date.now()}.txt`, "text/plain");
+};
+
+function downloadFile(content, filename, mime) {
+  const blob = new Blob([content], { type: mime + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
 
 // ---------- Auto-start if password already saved ----------
 if (pass) {
