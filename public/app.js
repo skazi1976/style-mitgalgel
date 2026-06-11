@@ -37,6 +37,21 @@ function smgSource() {
 function smgCampaign() {
   try { return localStorage.getItem("smg_camp") || undefined; } catch (e) { return undefined; }
 }
+// Beacon a product-engagement event (product_view / buy_click) attributed to the
+// visitor's ad source. Only fires for visitors who arrived via a UTM link, so it
+// measures what the AD traffic actually does (esp. the "view items to buy" ad).
+function smgTrackEvent(type, itemId) {
+  try {
+    const src = smgSource();
+    if (!src) return;
+    fetch("/api/track-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, source: src, campaign: smgCampaign(), item_id: itemId || null }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {}
+}
 
 // ---------- Facebook Pixel ----------
 // Loads the pixel + fires PageView on every page. Used to measure Facebook ad

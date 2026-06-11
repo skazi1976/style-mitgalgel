@@ -33,6 +33,13 @@ async function load() {
     item = res.item;
     render();
     api("/api/items/" + id + "/view", { method: "POST" }).catch(() => {});
+    // Attribute a product view to the visitor's ad (once per item per session).
+    try {
+      if (typeof smgTrackEvent === "function" && !sessionStorage.getItem("smg_pv_" + id)) {
+        sessionStorage.setItem("smg_pv_" + id, "1");
+        smgTrackEvent("product_view", id);
+      }
+    } catch (e) {}
   } catch (err) {
     document.getElementById("content").innerHTML = `<div class="empty"><div class="emoji">😢</div><h3>${err.message}</h3></div>`;
   }
@@ -130,6 +137,8 @@ function trackContact() {
       method: "POST", headers, keepalive: true,
       body: JSON.stringify({ device_id: localStorage.getItem("smg_device_id") || null }),
     }).catch(() => {});
+    // Attribute a buy/WhatsApp click to the visitor's ad.
+    if (typeof smgTrackEvent === "function") smgTrackEvent("buy_click", id);
   } catch (e) {}
 }
 

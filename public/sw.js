@@ -1,4 +1,4 @@
-const CACHE = "smg-v87";
+const CACHE = "smg-v88";
 const SHELL = ["/", "/style.css", "/app.js", "/firebase-auth.js", "/manifest.json", "/icon-192.png"];
 
 self.addEventListener("install", (e) => {

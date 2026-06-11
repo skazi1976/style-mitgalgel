@@ -211,6 +211,24 @@ async function trackVisit(req, env) {
   return json({ ok: true });
 }
 
+// Logs a product-engagement event (product_view / buy_click) attributed to the
+// visitor's ad source/campaign — so the admin can measure what each ad's traffic
+// actually does, not just whether they registered.
+async function trackEvent(req, env) {
+  const { type, source, campaign, item_id } = await req.json().catch(() => ({}));
+  const t = (type === "product_view" || type === "buy_click") ? type : null;
+  const src = cleanSource(source);
+  if (!t || !src) return json({ ok: true });
+  const camp = cleanCampaign(campaign);
+  const iid = Number.isInteger(item_id) ? item_id : (parseInt(item_id, 10) || null);
+  try {
+    await env.DB.prepare(
+      "INSERT INTO engagements (type, source, campaign, item_id, ts) VALUES (?, ?, ?, ?, ?)"
+    ).bind(t, src, camp, iid, now()).run();
+  } catch (e) {}
+  return json({ ok: true });
+}
+
 async function verifyOtp(req, env) {
   const { phone: rawPhone, code, name, source, campaign } = await req.json().catch(() => ({}));
   const signupSource = cleanSource(source);
@@ -1002,16 +1020,20 @@ async function adminStats(env) {
   // Per-campaign (per-ad) breakdown for Facebook: visits + signups merged by campaign.
   let fbCampaigns = [];
   try {
-    const [vRows, sRows] = await Promise.all([
+    const [vRows, sRows, eRows] = await Promise.all([
       env.DB.prepare("SELECT campaign, COUNT(*) c FROM visits WHERE source='facebook' GROUP BY campaign").all(),
       env.DB.prepare("SELECT signup_campaign campaign, COUNT(*) c FROM users WHERE signup_source='facebook' GROUP BY signup_campaign").all(),
+      env.DB.prepare("SELECT campaign, type, COUNT(*) c FROM engagements WHERE source='facebook' GROUP BY campaign, type").all().catch(() => ({ results: [] })),
     ]);
+    const blank = (k) => ({ campaign: k, visits: 0, product_views: 0, buy_clicks: 0, signups: 0 });
     const map = new Map();
-    for (const r of (vRows.results || [])) map.set(r.campaign || "—", { campaign: r.campaign || "—", visits: r.c, signups: 0 });
-    for (const r of (sRows.results || [])) {
-      const k = r.campaign || "—";
-      const e = map.get(k) || { campaign: k, visits: 0, signups: 0 };
-      e.signups = r.c; map.set(k, e);
+    const get = (c) => { const k = c || "—"; if (!map.has(k)) map.set(k, blank(k)); return map.get(k); };
+    for (const r of (vRows.results || [])) get(r.campaign).visits = r.c;
+    for (const r of (sRows.results || [])) get(r.campaign).signups = r.c;
+    for (const r of (eRows.results || [])) {
+      const e = get(r.campaign);
+      if (r.type === "product_view") e.product_views = r.c;
+      else if (r.type === "buy_click") e.buy_clicks = r.c;
     }
     fbCampaigns = [...map.values()].sort((a, b) => b.visits - a.visits);
   } catch (e) {}
@@ -1417,6 +1439,7 @@ export default {
 
       // Anonymous traffic tracking (UTM landing beacon)
       if (path === "/api/track-visit" && method === "POST") return await trackVisit(req, env);
+      if (path === "/api/track-event" && method === "POST") return await trackEvent(req, env);
 
       // Auth
       if (path === "/api/auth/firebase-login" && method === "POST") return await firebaseLogin(req, env);
