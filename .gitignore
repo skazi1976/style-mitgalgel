@@ -7,3 +7,10 @@ node_modules/
 # Local backups — contain user PII (phone numbers) and secret values.
 # Never push to the public repo. Keep safe locally.
 backups/
+
+# Session notes & local utility scripts — contain live secrets/PII. Keep local only.
+session_backup_*.md
+vonage_balance_alert.js
+vonage_balance_alert.bat
+marketing-launch/tailwind_rollingstyle_launch.py
+marketing-launch/telegram_post.md
